@@ -1,0 +1,12 @@
+{
+  "github.copilot.enable": {
+    "*": false
+  }
+  //   "editor.quickSuggestions": {
+  //     "other": false,
+  //     "comments": false,
+  //     "strings": false
+  //   }
+  //   "editor.suggestOnTriggerCharacters": false
+  //   "editor.parameterHints.enabled": false
+}
