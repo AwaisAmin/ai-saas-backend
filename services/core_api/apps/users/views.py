@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.request import Request
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
-from common.response import success_response, error_response
+from common.response import success_response, error_response, format_errors
 from .serializers import RegisterSerializer, LoginSerializer, UserSerializer
 from .services import AuthService, LoginInput, RegisterInput
 
@@ -12,7 +12,7 @@ class RegisterView(APIView):
     def post(self, request: Request):
         serializer = RegisterSerializer(data=request.data)
         if not serializer.is_valid():
-            return error_response(errors=serializer.errors, message="Validation failed")
+            return error_response(errors=format_errors(serializer.errors), message="Validation failed")
         
         data = RegisterInput(
             email=serializer.validated_data['email'],
@@ -34,7 +34,7 @@ class LoginView(APIView):
     def post(self, request: Request):
         serializer = LoginSerializer(data=request.data)
         if not serializer.is_valid():
-            return error_response(errors=serializer.errors, message="Validation failed")
+            return error_response(errors=format_errors(serializer.errors), message="Validation failed")
         
         data = LoginInput(
             email=serializer.validated_data['email'],

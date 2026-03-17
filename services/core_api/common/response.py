@@ -15,3 +15,14 @@ def error_response(errors=None, message="Something went wrong", status=400):
         "data": None,
         "errors": errors,
     }, status=status)
+
+def format_errors(errors: dict) -> list:
+    result = []
+    for field, messages in errors.items():
+        message = messages[0] if isinstance(messages, list) else str(messages)
+        result.append({
+            "field": field,
+            "message": message,
+            "code": field.upper() + "_ERROR"
+        })
+    return result

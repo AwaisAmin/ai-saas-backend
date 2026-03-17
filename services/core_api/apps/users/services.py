@@ -1,5 +1,5 @@
 from django.contrib.auth import authenticate
-from pydantic import BaseModal, EmailStr
+from pydantic import BaseModel, EmailStr
 from .models import User
 
 class RegisterInput(BaseModel):
