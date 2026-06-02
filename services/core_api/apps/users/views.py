@@ -2,6 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.request import Request
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from common.response import success_response, error_response, format_errors
 from .serializers import RegisterSerializer, LoginSerializer, UserSerializer
 from .services import AuthService, LoginInput, RegisterInput
@@ -68,3 +70,14 @@ class LogoutView(APIView):
         token = RefreshToken(refresh_token)
         token.blacklist()
         return success_response(message="Logged out successfully")
+    
+class CustomTokenRefreshView(TokenRefreshView):
+    def post(self, request, *args, **kwargs):
+        try:
+            response = super().post(request, *args, **kwargs)
+            return success_response(
+                data={"access_token": response.data['access']},
+                message="Token refreshed successfully",
+            )
+        except (TokenError, InvalidToken):
+            return error_response(message="Invalid or expired refresh token", status=401)
