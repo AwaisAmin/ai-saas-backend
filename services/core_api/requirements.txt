@@ -29,3 +29,5 @@ tzlocal==5.3.1
 vine==5.1.0
 wcwidth==0.6.0
 django-filter==25.2
+django-redis==7.0.0
+
