@@ -18,6 +18,10 @@ class Organization(BaseModel):
 
     class Meta:
         db_table = 'organizations'
+        indexes = [
+            models.Index(fields=['slug'], name='idx_org_slug'),
+            models.Index(fields=['is_active'], name='idx_org_active'),
+        ]
     
     def __str__(self) -> str:
         return self.name
@@ -38,6 +42,11 @@ class Membership(BaseModel):
     class Meta:
         db_table = 'memberships'
         unique_together = ('user', 'organization')
+        indexes = [
+            models.Index(fields=['user'], name='idx_membership_user'),
+            models.Index(fields=['organization'], name='idx_membership_org'),
+            models.Index(fields=['role'], name='idx_membership_role'),
+        ]
 
     def __str__(self) -> str:
         return f"{self.user.email} - {self.organization.name} ({self.role})"

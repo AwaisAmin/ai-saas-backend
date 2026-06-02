@@ -52,6 +52,14 @@ class Task(BaseModel):
     class Meta:
         db_table = 'tasks'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['project'], name='idx_task_project'),
+            models.Index(fields=['assignee'], name='idx_task_assignee'),
+            models.Index(fields=['status'], name='idx_task_status'),
+            models.Index(fields=['priority'], name='idx_task_priority'),
+            models.Index(fields=['due_date'], name='idx_task_due_date'),
+            models.Index(fields=['project', 'status'], name='idx_task_project_status'),
+        ]
 
     def __str__(self):
         return self.title

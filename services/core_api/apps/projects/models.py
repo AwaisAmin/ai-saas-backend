@@ -30,6 +30,11 @@ class Project(BaseModel):
     class Meta:
         db_table = 'projects'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['organization'], name='idx_project_org'),
+            models.Index(fields=['status'], name='idx_project_status'),
+            models.Index(fields=['organization', 'status'], name='idx_project_org_status'),
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.organization.name})"

@@ -1,4 +1,5 @@
 from rest_framework.views import APIView
+from django.core.cache import cache
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from common.response import success_response, error_response, format_errors
@@ -19,6 +20,11 @@ class OrganizationListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request: Request):
+        cache_key = f"user:{request.user.id}:orgs"
+        cached = cache.get(cache_key)
+        if cached:
+            return success_response(data=cached, message="Organizations retrieved")
+
         orgs = OrganizationService.get_user_organizations(request.user)
         memberships = Membership.objects.filter(
             user=request.user,
@@ -31,6 +37,7 @@ class OrganizationListCreateView(APIView):
             org_data['my_role'] = m.role
             data.append(org_data)
 
+        cache.set(cache_key, data, timeout=300)
         return success_response(data=data, message="Organizations retrieved")
 
     def post(self, request: Request):
@@ -47,6 +54,7 @@ class OrganizationListCreateView(APIView):
             owner_id=str(request.user.id),
         )
         org = OrganizationService.create(inp)
+        cache.delete(f"user:{request.user.id}:orgs")
         return success_response(
             data=OrganizationSerializer(org).data,
             message="Organization created",
@@ -57,9 +65,18 @@ class OrganizationDetailView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request: Request, slug: str):
+        cache_key = f"org:{slug}"
+        org_data = cache.get(cache_key)
+
+        if org_data:
+            return success_response(data=org_data)
+
         org = self.get_organization()
         self.get_membership(org)
-        return success_response(data=OrganizationSerializer(org).data)
+        org_data = OrganizationSerializer(org).data
+        cache.set(cache_key, org_data, timeout=300)
+
+        return success_response(data=org_data)
 
     def patch(self, request: Request, slug: str):
         org = self.get_organization()
@@ -79,6 +96,7 @@ class OrganizationDetailView(OrganizationScopedMixin, APIView):
             )
 
         updated_org = serializer.save()
+        cache.delete(f"org:{slug}")
         return success_response(
             data=OrganizationSerializer(updated_org).data,
             message="Organization updated",
@@ -92,10 +110,10 @@ class OrganizationDetailView(OrganizationScopedMixin, APIView):
                 organization=org,
                 requesting_user=request.user,
             )
+            cache.delete(f"org:{slug}")
             return success_response(message="Organization deleted successfully")
         except ValueError as e:
             return error_response(message=str(e), status=403)
-
 
 class MemberListInviteView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
