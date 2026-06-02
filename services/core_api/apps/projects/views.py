@@ -1,0 +1,106 @@
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.request import Request
+from common.response import success_response, error_response, format_errors
+from common.mixins import OrganizationScopedMixin
+from .models import Project
+from .serializers import ProjectSerializer, ProjectCreateSerializer, ProjectUpdateSerializer
+from .services import ProjectService, CreateProjectInput, UpdateProjectInput
+from apps.organizations.models import Membership
+
+ADMIN_ROLES = [Membership.RoleChoices.OWNER, Membership.RoleChoices.ADMIN]
+
+class ProjectListCreateView(OrganizationScopedMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request, slug: str):
+        org = self.get_organization()
+        self.get_membership(org)
+        projects = ProjectService.get_all(org)
+        return success_response(data=ProjectSerializer(projects, many=True).data)
+
+    def post(self, request: Request, slug: str):
+        org = self.get_organization()
+        membership = self.get_membership(org)
+
+        if membership.role not in ADMIN_ROLES:
+            return error_response(
+                message="Only owner or admin can create projects",
+                status=403,
+            )
+
+        serializer = ProjectCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response(
+                errors=format_errors(serializer.errors),
+                message="Validation failed",
+            )
+
+        inp = CreateProjectInput(
+            name=serializer.validated_data['name'],
+            description=serializer.validated_data.get('description', ''),
+            organization_id=str(org.id),
+            owner_id=str(request.user.id),
+        )
+        project = ProjectService.create(inp)
+        return success_response(
+            data=ProjectSerializer(project).data,
+            message="Project created successfully",
+            status=201,
+        )
+
+class ProjectDetailView(OrganizationScopedMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request, slug: str, project_id: str):
+        org = self.get_organization()
+        self.get_membership(org)
+        try:
+            project = ProjectService.get_by_id(str(project_id), org)
+            return success_response(data=ProjectSerializer(project).data)
+        except ValueError as e:
+            return error_response(message=str(e), status=404)
+
+    def patch(self, request: Request, slug: str, project_id: str):
+        org = self.get_organization()
+        membership = self.get_membership(org)
+
+        if membership.role not in ADMIN_ROLES:
+            return error_response(
+                message="Only owner or admin can update projects",
+                status=403,
+            )
+
+        try:
+            project = ProjectService.get_by_id(str(project_id), org)
+        except ValueError as e:
+            return error_response(message=str(e), status=404)
+
+        serializer = ProjectUpdateSerializer(project, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return error_response(
+                errors=format_errors(serializer.errors),
+                message="Validation failed",
+            )
+
+        inp = UpdateProjectInput(
+            name=serializer.validated_data.get('name'),
+            description=serializer.validated_data.get('description'),
+            status=serializer.validated_data.get('status'),
+        )
+        updated = ProjectService.update(project, inp)
+        return success_response(
+            data=ProjectSerializer(updated).data,
+            message="Project updated successfully",
+        )
+
+    def delete(self, request: Request, slug: str, project_id: str):
+        org = self.get_organization()
+        self.get_membership(org)
+
+        try:
+            project = ProjectService.get_by_id(str(project_id), org)
+            ProjectService.delete(project, request.user)
+            return success_response(message="Project deleted successfully")
+        except ValueError as e:
+            return error_response(message=str(e), status=403)
