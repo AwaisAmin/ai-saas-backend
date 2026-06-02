@@ -1,15 +1,17 @@
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
+from rest_framework.pagination import PageNumberPagination
+from .filters import TaskFilter
 from common.response import success_response, error_response, format_errors
 from common.mixins import OrganizationScopedMixin
 from apps.projects.services import ProjectService
-from .models import Task
 from .serializers import TaskSerializer, TaskCreateSerializer, TaskUpdateSerializer
 from .services import TaskService, CreateTaskInput, UpdateTaskInput
 
 class TaskListCreateView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
+    pagination_class = PageNumberPagination
 
     def get(self, request: Request, slug: str, project_id: str):
         org = self.get_organization()
@@ -21,7 +23,33 @@ class TaskListCreateView(OrganizationScopedMixin, APIView):
             return error_response(message=str(e), status=404)
 
         tasks = TaskService.get_all(project)
-        return success_response(data=TaskSerializer(tasks, many=True).data)
+
+        # Filtering
+        filterset = TaskFilter(request.GET, queryset=tasks)
+        tasks = filterset.qs
+
+        # Search
+        search = request.GET.get('search')
+        if search:
+            tasks = tasks.filter(title__icontains=search)
+
+        # Ordering
+        sort_by = request.GET.get('sort_by', 'created_at')
+        order = request.GET.get('order', 'desc')
+
+        allowed_sort_fields = ['created_at', 'due_date', 'priority', 'title']
+        if sort_by not in allowed_sort_fields:
+            sort_by = 'created_at'
+
+        if order == 'desc':
+            sort_by = f'-{sort_by}'
+
+        tasks = tasks.order_by(sort_by)
+
+        # Pagination
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(tasks, request)
+        return paginator.get_paginated_response(TaskSerializer(page, many=True).data)
 
     def post(self, request: Request, slug: str, project_id: str):
         org = self.get_organization()
