@@ -9,3 +9,5 @@ logs/
 dist/
 .coverage
 htmlcov/
+PROJECT.md
+CLAUDE.md
