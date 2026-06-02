@@ -7,6 +7,7 @@ from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from common.response import success_response, error_response, format_errors
 from .serializers import RegisterSerializer, LoginSerializer, UserSerializer
 from .services import AuthService, LoginInput, RegisterInput
+from .tasks import send_welcome_email
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
@@ -23,6 +24,7 @@ class RegisterView(APIView):
             last_name=serializer.validated_data.get('last_name',''),
         )
         user = AuthService.register(data)
+        send_welcome_email.delay(user.email, user.first_name)
 
         return success_response(
             data=UserSerializer(user).data,
