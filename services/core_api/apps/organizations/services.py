@@ -93,3 +93,16 @@ class OrganizationService:
             raise ValueError("You cannot remove yourself")
 
         membership.delete()
+
+    @staticmethod
+    def deactivate(organization: Organization, requesting_user: User) -> None:
+        membership = Membership.objects.get(
+            user=requesting_user,
+            organization=organization,
+        )
+        if membership.role != Membership.RoleChoices.OWNER:
+            raise ValueError("Only the owner can delete an organization")
+
+        organization.is_active = False
+        organization.save(update_fields=['is_active', 'updated_at'])
+

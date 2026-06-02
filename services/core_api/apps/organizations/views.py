@@ -83,6 +83,19 @@ class OrganizationDetailView(OrganizationScopedMixin, APIView):
             data=OrganizationSerializer(updated_org).data,
             message="Organization updated",
         )
+    
+    def delete(self, request: Request, slug: str):
+        org = self.get_organization()
+
+        try:
+            OrganizationService.deactivate(
+                organization=org,
+                requesting_user=request.user,
+            )
+            return success_response(message="Organization deleted successfully")
+        except ValueError as e:
+            return error_response(message=str(e), status=403)
+
 
 class MemberListInviteView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
