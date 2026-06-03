@@ -2,6 +2,8 @@ from rest_framework.views import APIView
 from django.core.cache import cache
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
+from apps.activity.tasks import log_activity
+from apps.activity.models import ActivityLog
 from common.response import success_response, error_response, format_errors
 from common.mixins import OrganizationScopedMixin
 from .models import Membership
@@ -148,6 +150,17 @@ class MemberListInviteView(OrganizationScopedMixin, APIView):
                 role=serializer.validated_data['role'],
             )
             new_membership = OrganizationService.invite_member(inp)
+            log_activity.delay(
+                organization_id=str(org.id),
+                user_id=str(request.user.id),
+                action=ActivityLog.ActionChoices.MEMBER_INVITED,
+                entity_type=ActivityLog.EntityTypeChoices.MEMBERSHIP,
+                entity_id=str(new_membership.id),
+                metadata={
+                    'invited_email': serializer.validated_data['email'],
+                    'role': serializer.validated_data['role'],
+                }
+            )
             return success_response(
                 data=MemberSerializer(new_membership).data,
                 message="Member invited successfully",
@@ -182,6 +195,14 @@ class MemberDetailView(OrganizationScopedMixin, APIView):
                 new_role=serializer.validated_data['role'],
                 organization=org,
             )
+            log_activity.delay(
+                organization_id=str(org.id),
+                user_id=str(request.user.id),
+                action=ActivityLog.ActionChoices.MEMBER_ROLE_CHANGED,
+                entity_type=ActivityLog.EntityTypeChoices.MEMBERSHIP,
+                entity_id=str(membership_id),
+                metadata={'new_role': serializer.validated_data['role']}
+            )
             return success_response(
                 data=MemberSerializer(updated).data,
                 message="Role updated successfully",
@@ -204,6 +225,14 @@ class MemberDetailView(OrganizationScopedMixin, APIView):
                 membership_id=str(membership_id),
                 requesting_user=request.user,
                 organization=org,
+            )
+            log_activity.delay(
+                organization_id=str(org.id),
+                user_id=str(request.user.id),
+                action=ActivityLog.ActionChoices.MEMBER_REMOVED,
+                entity_type=ActivityLog.EntityTypeChoices.MEMBERSHIP,
+                entity_id=str(membership_id),
+                metadata={}
             )
             return success_response(message="Member removed successfully")
         except ValueError as e:

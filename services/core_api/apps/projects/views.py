@@ -1,6 +1,8 @@
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
+from apps.activity.tasks import log_activity
+from apps.activity.models import ActivityLog
 from common.response import success_response, error_response, format_errors
 from common.mixins import OrganizationScopedMixin
 from .models import Project
@@ -43,6 +45,14 @@ class ProjectListCreateView(OrganizationScopedMixin, APIView):
             owner_id=str(request.user.id),
         )
         project = ProjectService.create(inp)
+        log_activity.delay(
+            organization_id=str(org.id),
+            user_id=str(request.user.id),
+            action=ActivityLog.ActionChoices.PROJECT_CREATED,
+            entity_type=ActivityLog.EntityTypeChoices.PROJECT,
+            entity_id=str(project.id),
+            metadata={'project_name': project.name}
+        )
         return success_response(
             data=ProjectSerializer(project).data,
             message="Project created successfully",
@@ -89,6 +99,14 @@ class ProjectDetailView(OrganizationScopedMixin, APIView):
             status=serializer.validated_data.get('status'),
         )
         updated = ProjectService.update(project, inp)
+        log_activity.delay(
+            organization_id=str(org.id),
+            user_id=str(request.user.id),
+            action=ActivityLog.ActionChoices.PROJECT_UPDATED,
+            entity_type=ActivityLog.EntityTypeChoices.PROJECT,
+            entity_id=str(project.id),
+            metadata={'project_name': project.name}
+        )
         return success_response(
             data=ProjectSerializer(updated).data,
             message="Project updated successfully",
@@ -101,6 +119,14 @@ class ProjectDetailView(OrganizationScopedMixin, APIView):
         try:
             project = ProjectService.get_by_id(str(project_id), org)
             ProjectService.delete(project, request.user)
+            log_activity.delay(
+                organization_id=str(org.id),
+                user_id=str(request.user.id),
+                action=ActivityLog.ActionChoices.PROJECT_DELETED,
+                entity_type=ActivityLog.EntityTypeChoices.PROJECT,
+                entity_id=str(project.id),
+                metadata={'project_name': project.name}
+            )
             return success_response(message="Project deleted successfully")
         except ValueError as e:
             return error_response(message=str(e), status=403)
