@@ -1,3 +1,4 @@
+from .models import User
 from rest_framework.views import APIView
 from rest_framework.request import Request
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -7,7 +8,7 @@ from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from common.response import success_response, error_response, format_errors
 from .serializers import RegisterSerializer, LoginSerializer, UserSerializer
 from .services import AuthService, LoginInput, RegisterInput
-from .tasks import send_welcome_email
+from .tasks import send_welcome_email, send_verification_email
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
@@ -25,10 +26,15 @@ class RegisterView(APIView):
         )
         user = AuthService.register(data)
         send_welcome_email.delay(user.email, user.first_name)
+        send_verification_email.delay(
+            user.email,
+            user.first_name,
+            str(user.verification_token),
+        )
 
         return success_response(
             data=UserSerializer(user).data,
-            message="Account created successfully",
+            message="Account created successfully. Please verify your email.",
             status=201
         )
     
@@ -83,3 +89,24 @@ class CustomTokenRefreshView(TokenRefreshView):
             )
         except (TokenError, InvalidToken):
             return error_response(message="Invalid or expired refresh token", status=401)
+
+class VerifyEmailView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request: Request):
+        token = request.GET.get('token')
+        if not token:
+            return error_response(message="Token is required", status=400)
+
+        try:
+            user = User.objects.get(verification_token=token)
+        except User.DoesNotExist:
+            return error_response(message="Invalid or expired token", status=400)
+
+        if user.is_verified:
+            return success_response(message="Email already verified")
+        
+        user.is_verified = True
+        user.save(update_fields=['is_verified', 'updated_at'])
+
+        return success_response(message="Email verified successfully")
