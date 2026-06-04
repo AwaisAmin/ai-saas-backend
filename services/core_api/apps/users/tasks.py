@@ -49,3 +49,30 @@ def send_verification_email(self, user_email: str, first_name: str, verification
 
     except Exception as exc:
         raise self.retry(exc=exc, countdown=60)
+
+@shared_task(bind=True, max_retries=3)
+def send_reminder_email(self, user_email: str, first_name: str,
+                        task_title: str, project_name: str, due_date: str):
+    try:
+        html_content = render_to_string('emails/task_reminder.html', {
+            'first_name': first_name,
+            'task_title': task_title,
+            'project_name': project_name,
+            'due_date': due_date,
+        })
+        text_content = (
+            f"Hi {first_name}, your task '{task_title}' "
+            f"in project '{project_name}' is due tomorrow ({due_date})."
+        )
+
+        email = EmailMultiAlternatives(
+            subject=f"Reminder: '{task_title}' is due tomorrow!",
+            body=text_content,
+            from_email=f"NexTask <{settings.DEFAULT_FROM_EMAIL}>",
+            to=[user_email],
+        )
+        email.attach_alternative(html_content, "text/html")
+        email.send()
+
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=60)

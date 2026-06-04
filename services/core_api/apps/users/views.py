@@ -1,4 +1,5 @@
 from .models import User
+import uuid
 from rest_framework.views import APIView
 from rest_framework.request import Request
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -107,6 +108,7 @@ class VerifyEmailView(APIView):
             return success_response(message="Email already verified")
         
         user.is_verified = True
-        user.save(update_fields=['is_verified', 'updated_at'])
+        user.verification_token = uuid.uuid4()
+        user.save(update_fields=['is_verified', 'verification_token', 'updated_at'])
 
         return success_response(message="Email verified successfully")

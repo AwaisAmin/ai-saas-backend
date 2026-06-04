@@ -1,6 +1,7 @@
 from pathlib import Path
 from dotenv import load_dotenv
 from datetime import timedelta
+from celery.schedules import crontab
 import os
 
 load_dotenv(Path(__file__).resolve().parent.parent.parent.parent.parent / '.env')
@@ -21,6 +22,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'django_filters',
+    'django_celery_beat',
     # Our apps
     'apps.users',
     'apps.organizations',
@@ -102,12 +104,19 @@ SIMPLE_JWT = {
 # Celery
 CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
 CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
+CELERY_BEAT_SCHEDULE = {
+    'send-due-date-reminders': {
+        'task': 'apps.tasks.tasks.send_due_date_reminders',
+        'schedule': crontab(hour=9, minute=0),  # Everyday at 9am
+    },
+}
 
 # Email
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
