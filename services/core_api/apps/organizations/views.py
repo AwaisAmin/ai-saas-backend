@@ -15,6 +15,7 @@ from .serializers import (
     UpdateMemberRoleSerializer,
 )
 from .services import OrganizationService, CreateOrgInput, InviteMemberInput
+from apps.subscriptions.services import SubscriptionService
 
 ADMIN_ROLES = [Membership.RoleChoices.OWNER, Membership.RoleChoices.ADMIN]
 
@@ -135,6 +136,10 @@ class MemberListInviteView(OrganizationScopedMixin, APIView):
                 message="Only owner or admin can invite members",
                 status=403,
             )
+        # Plan limit check
+        can_invite, message = SubscriptionService.can_invite_member(org)
+        if not can_invite:
+            return error_response(message=message, status=403)
 
         serializer = InviteMemberSerializer(data=request.data)
         if not serializer.is_valid():

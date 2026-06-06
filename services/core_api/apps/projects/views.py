@@ -9,6 +9,7 @@ from .models import Project
 from .serializers import ProjectSerializer, ProjectCreateSerializer, ProjectUpdateSerializer
 from .services import ProjectService, CreateProjectInput, UpdateProjectInput
 from apps.organizations.models import Membership
+from apps.subscriptions.services import SubscriptionService
 
 ADMIN_ROLES = [Membership.RoleChoices.OWNER, Membership.RoleChoices.ADMIN]
 
@@ -30,6 +31,10 @@ class ProjectListCreateView(OrganizationScopedMixin, APIView):
                 message="Only owner or admin can create projects",
                 status=403,
             )
+        # Plan limit check
+        can_create, message = SubscriptionService.can_create_project(org)
+        if not can_create:
+            return error_response(message=message, status=403)
 
         serializer = ProjectCreateSerializer(data=request.data)
         if not serializer.is_valid():
