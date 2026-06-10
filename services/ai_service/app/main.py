@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from app.routers import generate, summarize, suggest
+
 app = FastAPI(
     title="NexTask AI Service",
     version="1.0.0",
@@ -15,6 +17,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(generate.router)
+app.include_router(summarize.router)
+app.include_router(suggest.router)
 
 @app.get("/health")
 async def health():
