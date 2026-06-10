@@ -17,19 +17,21 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     # Third party
-    'corsheaders',
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'django_filters',
+    'corsheaders',
     'django_celery_beat',
-    # Our apps
-    'apps.users',
-    'apps.organizations',
-    'apps.projects',
-    'apps.tasks',
-    'apps.activity',
-    'apps.subscriptions',
+    # Core domain
+    'apps.core.users',
+    'apps.core.organizations',
+    # Workspace domain
+    'apps.workspace.projects',
+    'apps.workspace.tasks',
+    'apps.workspace.activity',
+    # Billing domain
+    'apps.billing.subscriptions',
 ]
 
 MIDDLEWARE = [
@@ -114,7 +116,7 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
 CELERY_BEAT_SCHEDULE = {
     'send-due-date-reminders': {
-        'task': 'apps.tasks.tasks.send_due_date_reminders',
+        'task': 'apps.workspace.tasks.tasks.send_due_date_reminders',
         'schedule': crontab(hour=9, minute=0),  # Everyday at 9am
     },
 }

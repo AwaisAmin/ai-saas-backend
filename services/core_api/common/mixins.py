@@ -2,7 +2,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 
 class OrganizationScopedMixin:
     def get_organization(self):
-        from apps.organizations.models import Organization
+        from apps.core.organizations.models import Organization
         slug = self.kwargs.get('slug')
         try:
             return Organization.objects.get(slug=slug, is_active=True)
@@ -10,7 +10,7 @@ class OrganizationScopedMixin:
             raise NotFound("Organization not found")
 
     def get_membership(self, organization=None):
-        from apps.organizations.models import Membership
+        from apps.core.organizations.models import Membership
         if organization is None:
             organization = self.get_organization()
         try:
