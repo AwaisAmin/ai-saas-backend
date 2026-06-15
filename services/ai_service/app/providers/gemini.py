@@ -6,7 +6,7 @@ from .base import BaseAIProvider, AIResponse
 class GeminiProvider(BaseAIProvider):
     def __init__(self):
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-        self.model = "gemini-2.0-flash"
+        self.model = "gemini-2.5-flash-lite"
 
     async def generate(self, prompt: str, max_tokens: int, temperature: float) -> AIResponse:
         response = self.client.models.generate_content(

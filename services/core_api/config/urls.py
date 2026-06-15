@@ -9,4 +9,5 @@ urlpatterns = [
     path('api/v1/organizations/<slug:slug>/projects/<uuid:project_id>/tasks/', include('apps.workspace.tasks.urls')),
     path('api/v1/organizations/<slug:slug>/activity/', include('apps.workspace.activity.urls')),
     path('api/v1/organizations/<slug:slug>/subscription/', include('apps.billing.subscriptions.urls')),
+    path('api/v1/ai/', include('apps.intelligence.urls')),
 ]
