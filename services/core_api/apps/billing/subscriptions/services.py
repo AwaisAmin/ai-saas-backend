@@ -1,4 +1,3 @@
-from pydantic import BaseModel as PydanticModel
 from .models import Subscription
 from apps.core.organizations.models import Organization
 
@@ -13,10 +12,15 @@ PLAN_LIMITS = {
         'max_members': 50,
         'max_ai_calls_per_day': 100,
     },
+    'business': {
+        'max_projects': None,     # Unlimited
+        'max_members': 200,
+        'max_ai_calls_per_day': 500,
+    },
     'enterprise': {
         'max_projects': None,      # Unlimited
         'max_members': None,       # Unlimited
-        'max_ai_calls_per_day': None,  # Unlimited
+        'max_ai_calls_per_day': 2000,
     },
 }
 
@@ -44,7 +48,7 @@ class SubscriptionService:
         ).count()
 
         if current_count >= limits['max_projects']:
-            return False, f"Free plan allows only {limits['max_projects']} projects. Upgrade to Pro."
+            return False, f"{subscription.plan.title()} plan allows only {limits['max_projects']} projects. Upgrade your plan."
 
         return True, ""
 
@@ -62,7 +66,7 @@ class SubscriptionService:
         ).count()
 
         if current_count >= limits['max_members']:
-            return False, f"Free plan allows only {limits['max_members']} members. Upgrade to Pro."
+            return False, f"{subscription.plan.title()} plan allows only {limits['max_members']} members. Upgrade your plan."
 
         return True, ""
 
@@ -84,6 +88,6 @@ class SubscriptionService:
         ).count()
 
         if today_ai_calls >= limits['max_ai_calls_per_day']:
-            return False, f"Daily AI calls limit ({limits['max_ai_calls_per_day']}) reached. Upgrade to Pro or try tomorrow."
+            return False, f"Daily AI limit ({limits['max_ai_calls_per_day']} calls) reached. Upgrade your plan."
 
         return True, ""

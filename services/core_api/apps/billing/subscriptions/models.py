@@ -6,6 +6,7 @@ class Subscription(BaseModel):
     class PlanChoices(models.TextChoices):
         FREE = 'free', 'Free'
         PRO = 'pro', 'Pro'
+        BUSINESS = 'business', 'Business'
         ENTERPRISE = 'enterprise', 'Enterprise'
 
     class StatusChoices(models.TextChoices):
