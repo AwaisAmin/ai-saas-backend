@@ -2,15 +2,17 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.pagination import PageNumberPagination
-from common.response import success_response, error_response, format_errors
-from common.mixins import OrganizationScopedMixin
-from apps.workspace.projects.services import ProjectService
-from apps.workspace.activity.tasks import log_activity
+
+from apps.core.organizations.models import Membership
 from apps.workspace.activity.models import ActivityLog
-from .models import Task
+from apps.workspace.activity.tasks import log_activity
+from apps.workspace.projects.services import ProjectService
+from common.mixins import OrganizationScopedMixin
+from common.response import success_response, error_response, format_errors
+
+from .filters import TaskFilter
 from .serializers import TaskSerializer, TaskCreateSerializer, TaskUpdateSerializer
 from .services import TaskService, CreateTaskInput, UpdateTaskInput
-from .filters import TaskFilter
 
 class TaskListCreateView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
@@ -56,7 +58,13 @@ class TaskListCreateView(OrganizationScopedMixin, APIView):
 
     def post(self, request: Request, slug: str, project_id: str):
         org = self.get_organization()
-        self.get_membership(org)
+        membership = self.get_membership(org)
+
+        if membership.role == Membership.RoleChoices.VIEWER:
+            return error_response(
+                message="Viewers cannot create tasks",
+                status=403,
+            )
 
         try:
             project = ProjectService.get_by_id(str(project_id), org)

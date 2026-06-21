@@ -38,3 +38,7 @@ drf-spectacular==0.29.0
 gunicorn==25.1.0
 sentry-sdk[django]
 stripe==15.2.1
+pytest-django
+pytest-cov
+factory-boy
+faker
