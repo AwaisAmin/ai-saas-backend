@@ -1,8 +1,11 @@
+import os
+
 from celery import shared_task
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.conf import settings
-import os
+
+from apps.core.users.models import User
 
 @shared_task(bind=True, max_retries=3)
 def send_welcome_email(self, user_email: str, first_name: str):
@@ -26,6 +29,10 @@ def send_welcome_email(self, user_email: str, first_name: str):
 @shared_task(bind=True, max_retries=3)
 def send_verification_email(self, user_email: str, first_name: str, verification_token: str):
     try:
+        user = User.objects.get(email=user_email)
+        if user.is_verified:
+            return
+
         # verification_url = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/verify-email?token={verification_token}"
 
         # Currently not have Frontend, for testing
