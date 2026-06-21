@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -53,13 +55,14 @@ class GenerateView(APIView):
             metadata={"prompt": prompt[:100], "endpoint": "generate"},
         )
 
+        logger.info(f"AI generate called by user={request.user.id} org={org.slug}")
+
         return success_response(result["data"], message="Generated successfully")
 
 class SummarizeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request: Request):
-        print("REQUEST DATA:", request.data)
         org_slug = request.data.get("org_slug")
         content = request.data.get("content")
 
@@ -80,6 +83,8 @@ class SummarizeView(APIView):
             entity_type=ActivityLog.EntityTypeChoices.AI,
             metadata={"endpoint": "summarize"},
         )
+
+        logger.info(f"AI summarize called by user={request.user.id} org={org.slug}")
 
         return success_response(result["data"], message="Summarized successfully")
 
@@ -108,5 +113,7 @@ class SuggestView(APIView):
             entity_type=ActivityLog.EntityTypeChoices.AI,
             metadata={"task_title": task_title[:100], "endpoint": "suggest"},
         )
+
+        logger.info(f"AI suggest called by user={request.user.id} org={org.slug}")
 
         return success_response(result["data"], message="Suggestions generated successfully")
