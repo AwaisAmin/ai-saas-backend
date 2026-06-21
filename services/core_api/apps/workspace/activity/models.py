@@ -22,12 +22,15 @@ class ActivityLog(BaseModel):
         MEMBER_ROLE_CHANGED = 'member_role_changed', 'Member Role Changed'
         # Org actions
         ORG_UPDATED = 'org_updated', 'Organization Updated'
+        # AI actions
+        AI_CALL = 'ai_call', 'AI Call'
 
     class EntityTypeChoices(models.TextChoices):
         TASK = 'task', 'Task'
         PROJECT = 'project', 'Project'
         MEMBERSHIP = 'membership', 'Membership'
         ORGANIZATION = 'organization', 'Organization'
+        AI = 'ai', 'AI'
 
     organization = models.ForeignKey(
         Organization,
@@ -41,8 +44,8 @@ class ActivityLog(BaseModel):
         related_name='activity_logs',
     )
     action = models.CharField(max_length=50, choices=ActionChoices.choices)
-    entity_type = models.CharField(max_length=20, choices=EntityTypeChoices.choices)
-    entity_id = models.UUIDField()
+    entity_type = models.CharField(max_length=20, choices=EntityTypeChoices.choices, null=True, blank=True)
+    entity_id = models.UUIDField(null=True, blank=True)
     metadata = models.JSONField(default=dict, blank=True)
 
     class Meta:
