@@ -6,9 +6,9 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from common.response import success_response, error_response, format_errors
 from .serializers import RegisterSerializer, LoginSerializer, UserSerializer
-from .services import AuthService, LoginInput, RegisterInput
+from .services import AuthService, LoginInput, RegisterInput, PasswordResetService, PasswordResetInput, PasswordResetConfirmInput
 from .models import User
-from .tasks import send_welcome_email, send_verification_email
+from .tasks import send_welcome_email, send_verification_email, send_password_reset_email
 import uuid
 
 class RegisterView(APIView):
@@ -112,3 +112,37 @@ class VerifyEmailView(APIView):
         user.save(update_fields=['is_verified', 'verification_token', 'updated_at'])
 
         return success_response(message="Email verified successfully")
+
+class PasswordResetRequestView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request: Request):
+        email = request.data.get("email")
+        if not email:
+            return error_response(message="Email is required", status=400)
+
+        token = PasswordResetService.create_token(PasswordResetInput(email=email))
+
+        if token:
+            send_password_reset_email.delay(token.user.email, token.user.first_name, str(token.token))
+
+        return success_response(message="If this email exists, a reset link has been sent.")
+
+class PasswordResetConfirmView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request: Request):
+        token = request.data.get("token")
+        new_password = request.data.get("new_password")
+
+        if not token or not new_password:
+            return error_response(message="token and new_password are required", status=400)
+
+        success, message = PasswordResetService.reset_password(
+            PasswordResetConfirmInput(token=token, new_password=new_password)
+        )
+
+        if not success:
+            return error_response(message=message, status=400)
+
+        return success_response(message=message)

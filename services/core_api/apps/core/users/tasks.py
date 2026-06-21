@@ -76,3 +76,26 @@ def send_reminder_email(self, user_email: str, first_name: str,
 
     except Exception as exc:
         raise self.retry(exc=exc, countdown=60)
+
+@shared_task(bind=True, max_retries=3)
+def send_password_reset_email(self, user_email: str, first_name: str, token: str):
+    try:
+        reset_url = f"{os.getenv('BACKEND_URL', 'http://localhost:8000')}/api/v1/auth/password-reset/confirm/?token={token}"
+
+        html_content = render_to_string('emails/password_reset.html', {
+            'first_name': first_name,
+            'reset_url': reset_url,
+        })
+        text_content = f"Hi {first_name}, reset your password: {reset_url}"
+
+        email = EmailMultiAlternatives(
+            subject='Reset your NexTask password',
+            body=text_content,
+            from_email=f"NexTask <{settings.DEFAULT_FROM_EMAIL}>",
+            to=[user_email],
+        )
+        email.attach_alternative(html_content, "text/html")
+        email.send()
+
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=60)
