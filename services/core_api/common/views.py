@@ -39,3 +39,8 @@ def readiness_check(request):
     if all_ok:
         return success_response(checks, message="Ready")
     return error_response(checks, message="Service not ready", status=503)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    return success_response({"status": "ok", "service": "core_api"}, message="Healthy")
