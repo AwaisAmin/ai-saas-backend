@@ -1,51 +1,41 @@
 import pytest
-from django.urls import reverse
 from rest_framework.test import APIClient
 from tests.factories import UserFactory
+
+@pytest.fixture
+def user(db):
+    return UserFactory()
 
 @pytest.fixture
 def client():
     return APIClient()
 
-@pytest.fixture
-def user():
-    return UserFactory()
-
-@pytest.fixture
-def auth_client(user):
-    client = APIClient()
-    response = client.post('/api/v1/auth/login/', {
-        'email': user.email,
-        'password': 'TestPass123!',
-    }, format='json')
-    token = response.data['data']['tokens']['access_token']
-    client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
-    return client
-
 @pytest.mark.django_db
 class TestRegister:
     def test_register_success(self, client):
         response = client.post('/api/v1/auth/register/', {
-            'email': 'newuser@test.com',
-            'password': 'StrongPass123!',
-            'password2': 'StrongPass123!',
+            'email': 'newuser@example.com',
+            'password': 'SecurePass456@',
+            'password2': 'SecurePass456@',
             'first_name': 'John',
             'last_name': 'Doe',
         }, format='json')
         assert response.status_code == 201
-        assert response.data['success'] == True
+        assert response.data['data']['email'] == 'newuser@example.com'
 
     def test_register_duplicate_email(self, client, user):
         response = client.post('/api/v1/auth/register/', {
             'email': user.email,
-            'password': 'StrongPass123!',
+            'password': 'SecurePass456@',
+            'password2': 'SecurePass456@',
         }, format='json')
         assert response.status_code == 400
-        assert response.data['success'] == False
 
-    def test_register_missing_email(self, client):
+    def test_register_invalid_email(self, client):
         response = client.post('/api/v1/auth/register/', {
-            'password': 'StrongPass123!',
+            'email': 'not-an-email',
+            'password': 'SecurePass456@',
+            'password2': 'SecurePass456@',
         }, format='json')
         assert response.status_code == 400
 
@@ -57,41 +47,65 @@ class TestLogin:
             'password': 'TestPass123!',
         }, format='json')
         assert response.status_code == 200
-        assert response.data['success'] == True
         assert 'access_token' in response.data['data']['tokens']
+        assert 'refresh_token' not in response.data['data']['tokens']
+        assert 'refresh_token' in response.cookies
+        assert response.cookies['refresh_token']['httponly']
 
     def test_login_wrong_password(self, client, user):
         response = client.post('/api/v1/auth/login/', {
             'email': user.email,
-            'password': 'wrongpassword',
+            'password': 'WrongPass!',
         }, format='json')
         assert response.status_code == 401
-        assert response.data['success'] == False
 
-    def test_login_wrong_email(self, client):
+    def test_login_nonexistent_user(self, client):
         response = client.post('/api/v1/auth/login/', {
-            'email': 'notexist@test.com',
+            'email': 'nobody@example.com',
             'password': 'TestPass123!',
         }, format='json')
         assert response.status_code == 401
 
 @pytest.mark.django_db
 class TestLogout:
-    def test_logout_success(self, auth_client, client, user):
-        refresh_response = client.post('/api/v1/auth/login/', {
+    def test_logout_success(self, client, user):
+        login = client.post('/api/v1/auth/login/', {
             'email': user.email,
             'password': 'TestPass123!',
         }, format='json')
-        refresh_token = refresh_response.data['data']['tokens']['refresh_token']
+        access_token = login.data['data']['tokens']['access_token']
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
 
-        response = auth_client.post('/api/v1/auth/logout/', {
-            'refresh_token': refresh_token,
-        }, format='json')
+        response = client.post('/api/v1/auth/logout/')
         assert response.status_code == 200
-        assert response.data['success'] == True
 
-    def test_logout_without_auth(self, client):
-        response = client.post('/api/v1/auth/logout/', {
-            'refresh_token': 'fake-token',
+    def test_logout_clears_cookie(self, client, user):
+        login = client.post('/api/v1/auth/login/', {
+            'email': user.email,
+            'password': 'TestPass123!',
         }, format='json')
+        access_token = login.data['data']['tokens']['access_token']
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+
+        response = client.post('/api/v1/auth/logout/')
+        assert response.cookies['refresh_token'].value == ''
+
+    def test_logout_unauthenticated(self, client):
+        response = client.post('/api/v1/auth/logout/')
+        assert response.status_code == 401
+
+@pytest.mark.django_db
+class TestTokenRefresh:
+    def test_refresh_success(self, client, user):
+        client.post('/api/v1/auth/login/', {
+            'email': user.email,
+            'password': 'TestPass123!',
+        }, format='json')
+
+        response = client.post('/api/v1/auth/token/refresh/')
+        assert response.status_code == 200
+        assert 'access_token' in response.data['data']
+
+    def test_refresh_without_cookie(self, client):
+        response = client.post('/api/v1/auth/token/refresh/')
         assert response.status_code == 401

@@ -1,15 +1,18 @@
-from rest_framework.views import APIView
+import uuid                       
+from django.conf import settings     
+
+from rest_framework.views import APIView                          
 from rest_framework.request import Request
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
-from common.response import success_response, error_response, format_errors
+
+from common.response import success_response, error_response, format_errors  
+
 from .serializers import RegisterSerializer, LoginSerializer, UserSerializer
 from .services import AuthService, LoginInput, RegisterInput, PasswordResetService, PasswordResetInput, PasswordResetConfirmInput
 from .models import User
 from .tasks import send_welcome_email, send_verification_email, send_password_reset_email
-import uuid
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
@@ -57,35 +60,59 @@ class LoginView(APIView):
             return error_response(message="Invalid email or password", status=401)
         
         refresh = RefreshToken.for_user(user)
-        return success_response(
+        response = success_response(
             data={
                 "user": UserSerializer(user).data,
                 "tokens": {
                     "access_token": str(refresh.access_token),
-                    "refresh_token": str(refresh),
                 }
             },
             message="Login successfully"
         )
+        response.set_cookie(
+            key="refresh_token",
+            value=str(refresh),
+            httponly=True,
+            secure=not settings.DEBUG,
+            samesite="Lax" if settings.DEBUG else "Strict",
+            max_age=60 * 60 * 24 * 7,
+            path="/api/v1/auth/",
+        )
+        return response
     
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request: Request):
-        refresh_token = request.data.get("refresh_token")
+        refresh_token = request.COOKIES.get("refresh_token")
         if not refresh_token:
             return error_response(message="Refresh token required")
-        
-        token = RefreshToken(refresh_token)
-        token.blacklist()
-        return success_response(message="Logged out successfully")
-    
-class CustomTokenRefreshView(TokenRefreshView):
-    def post(self, request, *args, **kwargs):
+
         try:
-            response = super().post(request, *args, **kwargs)
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        except (TokenError, InvalidToken):
+            pass
+
+        response = success_response(message="Logged out successfully")
+        response.delete_cookie(
+            key="refresh_token",
+            path="/api/v1/auth/",
+        )
+        return response
+    
+class CustomTokenRefreshView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        refresh_token = request.COOKIES.get("refresh_token")
+        if not refresh_token:
+            return error_response(message="Refresh token not found", status=401)
+
+        try:
+            token = RefreshToken(refresh_token)
             return success_response(
-                data={"access_token": response.data['access']},
+                data={"access_token": str(token.access_token)},
                 message="Token refreshed successfully",
             )
         except (TokenError, InvalidToken):
