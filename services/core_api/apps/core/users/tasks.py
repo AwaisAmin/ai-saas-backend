@@ -33,10 +33,7 @@ def send_verification_email(self, user_email: str, first_name: str, verification
         if user.is_verified:
             return
 
-        # verification_url = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/verify-email?token={verification_token}"
-
-        # Currently not have Frontend, for testing
-        verification_url = f"{os.getenv('BACKEND_URL', 'http://localhost:8000')}/api/v1/auth/verify-email/?token={verification_token}"
+        verification_url = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/verify-email?token={verification_token}"
 
 
         html_content = render_to_string('emails/email_verification.html', {
@@ -87,7 +84,7 @@ def send_reminder_email(self, user_email: str, first_name: str,
 @shared_task(bind=True, max_retries=3)
 def send_password_reset_email(self, user_email: str, first_name: str, token: str):
     try:
-        reset_url = f"{os.getenv('BACKEND_URL', 'http://localhost:8000')}/api/v1/auth/password-reset/confirm/?token={token}"
+        reset_url = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/reset-password?token={token}"
 
         html_content = render_to_string('emails/password_reset.html', {
             'first_name': first_name,
