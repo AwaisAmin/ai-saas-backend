@@ -7,7 +7,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 
-from common.response import success_response, error_response, format_errors  
+from common.response import success_response, error_response, format_errors
+from common.throttling import LoginThrottle, RegisterThrottle
 
 from .serializers import RegisterSerializer, LoginSerializer, UserSerializer
 from .services import AuthService, LoginInput, RegisterInput, PasswordResetService, PasswordResetInput, PasswordResetConfirmInput
@@ -16,6 +17,7 @@ from .tasks import send_welcome_email, send_verification_email, send_password_re
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [RegisterThrottle]
 
     def post(self, request: Request):
         serializer = RegisterSerializer(data=request.data)
@@ -44,6 +46,7 @@ class RegisterView(APIView):
     
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [LoginThrottle]
 
     def post(self, request: Request):
         serializer = LoginSerializer(data=request.data)
