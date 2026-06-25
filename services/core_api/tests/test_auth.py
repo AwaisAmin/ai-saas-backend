@@ -109,3 +109,31 @@ class TestTokenRefresh:
     def test_refresh_without_cookie(self, client):
         response = client.post('/api/v1/auth/token/refresh/')
         assert response.status_code == 401
+
+@pytest.mark.django_db
+class TestResendVerification:
+    def test_resend_unverified_user(self, client, user):
+        user.is_verified = False
+        user.save()
+        response = client.post('/api/v1/auth/resend-verification/', {
+            'email': user.email,
+        }, format='json')
+        assert response.status_code == 200
+
+    def test_resend_verified_user(self, client, user):
+        user.is_verified = True
+        user.save()
+        response = client.post('/api/v1/auth/resend-verification/', {
+            'email': user.email,
+        }, format='json')
+        assert response.status_code == 200
+
+    def test_resend_nonexistent_email(self, client):
+        response = client.post('/api/v1/auth/resend-verification/', {
+            'email': 'ghost@example.com',
+        }, format='json')
+        assert response.status_code == 200
+
+    def test_resend_no_email(self, client):
+        response = client.post('/api/v1/auth/resend-verification/', {}, format='json')
+        assert response.status_code == 200
