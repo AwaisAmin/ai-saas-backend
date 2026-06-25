@@ -8,7 +8,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 
 from common.response import success_response, error_response, format_errors
-from common.throttling import LoginThrottle, RegisterThrottle
+from common.throttling import LoginThrottle, RegisterThrottle, ResendVerificationThrottle
 
 from .serializers import RegisterSerializer, LoginSerializer, UserSerializer
 from .services import AuthService, LoginInput, RegisterInput, PasswordResetService, PasswordResetInput, PasswordResetConfirmInput
@@ -142,6 +142,30 @@ class VerifyEmailView(APIView):
         user.save(update_fields=['is_verified', 'verification_token', 'updated_at'])
 
         return success_response(message="Email verified successfully")
+
+class ResendVerificationView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [ResendVerificationThrottle]
+
+    def post(self, request: Request):
+        email = request.data.get("email")
+        generic_message = "If this email is unverified, we've sent a verification link."
+
+        if not email:
+            return success_response(message=generic_message)
+
+        try:
+            user = User.objects.get(email=email)
+            if not user.is_verified:
+                send_verification_email.delay(
+                    user.email,
+                    user.first_name,
+                    str(user.verification_token),
+                )
+        except User.DoesNotExist:
+            pass
+
+        return success_response(message=generic_message)
 
 class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]

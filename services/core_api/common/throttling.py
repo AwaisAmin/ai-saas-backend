@@ -5,3 +5,6 @@ class LoginThrottle(AnonRateThrottle):
 
 class RegisterThrottle(AnonRateThrottle):
     scope = 'register'
+
+class ResendVerificationThrottle(AnonRateThrottle):
+    scope = 'resend_verification'
