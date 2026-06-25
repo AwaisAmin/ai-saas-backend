@@ -33,7 +33,7 @@ def send_verification_email(self, user_email: str, first_name: str, verification
         if user.is_verified:
             return
 
-        verification_url = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/verify-email?token={verification_token}"
+        verification_url = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/verify-email?token={verification_token}&email={user_email}"
 
 
         html_content = render_to_string('emails/email_verification.html', {
