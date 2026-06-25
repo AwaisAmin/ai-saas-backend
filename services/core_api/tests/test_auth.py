@@ -16,7 +16,6 @@ class TestRegister:
         response = client.post('/api/v1/auth/register/', {
             'email': 'newuser@example.com',
             'password': 'SecurePass456@',
-            'confirm_password': 'SecurePass456@',
             'first_name': 'John',
             'last_name': 'Doe',
         }, format='json')
@@ -27,7 +26,6 @@ class TestRegister:
         response = client.post('/api/v1/auth/register/', {
             'email': user.email,
             'password': 'SecurePass456@',
-            'confirm_password': 'SecurePass456@',
         }, format='json')
         assert response.status_code == 400
 
@@ -35,7 +33,6 @@ class TestRegister:
         response = client.post('/api/v1/auth/register/', {
             'email': 'not-an-email',
             'password': 'SecurePass456@',
-            'confirm_password': 'SecurePass456@',
         }, format='json')
         assert response.status_code == 400
 

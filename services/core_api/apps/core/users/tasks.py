@@ -30,11 +30,14 @@ def send_welcome_email(self, user_email: str, first_name: str):
 def send_verification_email(self, user_email: str, first_name: str, verification_token: str):
     try:
         user = User.objects.get(email=user_email)
-        if user.is_verified:
-            return
+    except User.DoesNotExist:
+        return
 
+    if user.is_verified:
+        return
+
+    try:
         verification_url = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/verify-email?token={verification_token}&email={user_email}"
-
 
         html_content = render_to_string('emails/email_verification.html', {
             'first_name': first_name,
