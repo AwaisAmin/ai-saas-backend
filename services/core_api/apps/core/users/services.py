@@ -40,16 +40,18 @@ class AuthService:
     
 class OAuthService:
     @staticmethod
-    def authenticate(user_info: OAuthUserInfo) -> User:
+    def authenticate(user_info: OAuthUserInfo) -> tuple[User, bool]:
+        """Returns (user, is_new_user)"""
         try:
             social = SocialAccount.objects.select_related('user').get(
                 provider=user_info.provider,
                 social_id=user_info.social_id,
             )
-            return social.user
+            return social.user, False
         except SocialAccount.DoesNotExist:
             pass
 
+        is_new = False
         try:
             user = User.objects.get(email=user_info.email)
         except User.DoesNotExist:
@@ -59,6 +61,7 @@ class OAuthService:
                 first_name=user_info.first_name,
                 last_name=user_info.last_name,
             )
+            is_new = True
 
         if not user.is_verified:
             user.is_verified = True
@@ -70,7 +73,7 @@ class OAuthService:
             social_id=user_info.social_id,
         )
 
-        return user
+        return user, is_new
 
 class PasswordResetService:
     @staticmethod

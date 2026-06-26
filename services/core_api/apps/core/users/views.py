@@ -71,7 +71,7 @@ class LoginView(APIView):
                     "access_token": str(refresh.access_token),
                 }
             },
-            message="Login successfully"
+            message="Login successful"
         )
         response.set_cookie(
             key="refresh_token",
@@ -189,9 +189,12 @@ class SocialAuthView(APIView):
 
         try:
             user_info = provider_class().authenticate(code, redirect_uri)
-            user = OAuthService.authenticate(user_info)
+            user, is_new = OAuthService.authenticate(user_info)
         except OAuthError as e:
             return error_response(message=str(e), status=401)
+
+        if is_new:
+            send_welcome_email.delay(user.email, user.first_name)
 
         refresh = RefreshToken.for_user(user)
         response = success_response(
