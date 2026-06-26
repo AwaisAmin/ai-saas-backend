@@ -2,7 +2,8 @@ from django.contrib.auth import authenticate
 from pydantic import BaseModel, EmailStr
 from django.utils import timezone
 from datetime import timedelta
-from .models import User, PasswordResetToken
+from .models import User, PasswordResetToken, SocialAccount
+from .oauth_providers import OAuthUserInfo
 
 class RegisterInput(BaseModel):
     email: EmailStr
@@ -37,6 +38,40 @@ class AuthService:
         user = authenticate(username=data.email, password=data.password)
         return user
     
+class OAuthService:
+    @staticmethod
+    def authenticate(user_info: OAuthUserInfo) -> User:
+        try:
+            social = SocialAccount.objects.select_related('user').get(
+                provider=user_info.provider,
+                social_id=user_info.social_id,
+            )
+            return social.user
+        except SocialAccount.DoesNotExist:
+            pass
+
+        try:
+            user = User.objects.get(email=user_info.email)
+        except User.DoesNotExist:
+            user = User.objects.create_user(
+                email=user_info.email,
+                password=None,
+                first_name=user_info.first_name,
+                last_name=user_info.last_name,
+            )
+
+        if not user.is_verified:
+            user.is_verified = True
+            user.save(update_fields=['is_verified', 'updated_at'])
+
+        SocialAccount.objects.create(
+            user=user,
+            provider=user_info.provider,
+            social_id=user_info.social_id,
+        )
+
+        return user
+
 class PasswordResetService:
     @staticmethod
     def create_token(data: PasswordResetInput):

@@ -39,6 +39,23 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.email
 
+class SocialAccount(models.Model):
+    class ProviderChoices(models.TextChoices):
+        GOOGLE = 'google', 'Google'
+        GITHUB = 'github', 'GitHub'
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='social_accounts')
+    provider = models.CharField(max_length=50, choices=ProviderChoices.choices)
+    social_id = models.CharField(max_length=255)
+
+    class Meta:
+        db_table = 'social_accounts'
+        unique_together = ('provider', 'social_id')
+        indexes = [models.Index(fields=['provider', 'social_id'])]
+
+    def __str__(self):
+        return f"{self.provider}:{self.social_id}"
+
 class PasswordResetToken(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='password_reset_tokens')

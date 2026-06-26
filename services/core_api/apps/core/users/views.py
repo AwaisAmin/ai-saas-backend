@@ -11,9 +11,10 @@ from common.response import success_response, error_response, format_errors
 from common.throttling import LoginThrottle, RegisterThrottle, ResendVerificationThrottle
 
 from .serializers import RegisterSerializer, LoginSerializer, UserSerializer
-from .services import AuthService, LoginInput, RegisterInput, PasswordResetService, PasswordResetInput, PasswordResetConfirmInput
+from .services import AuthService, LoginInput, RegisterInput, PasswordResetService, PasswordResetInput, PasswordResetConfirmInput, OAuthService
 from .models import User
 from .tasks import send_welcome_email, send_verification_email, send_password_reset_email
+from .oauth_providers import GoogleOAuthProvider, GitHubOAuthProvider, OAuthError
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
@@ -166,6 +167,50 @@ class ResendVerificationView(APIView):
             pass
 
         return success_response(message=generic_message)
+
+class SocialAuthView(APIView):
+    permission_classes = [AllowAny]
+
+    PROVIDERS = {
+        'google': GoogleOAuthProvider,
+        'github': GitHubOAuthProvider,
+    }
+
+    def post(self, request: Request, provider: str):
+        provider_class = self.PROVIDERS.get(provider)
+        if not provider_class:
+            return error_response(message=f"Provider '{provider}' is not supported", status=400)
+
+        code = request.data.get('code')
+        redirect_uri = request.data.get('redirect_uri', '')
+
+        if not code:
+            return error_response(message="Authorization code is required", status=400)
+
+        try:
+            user_info = provider_class().authenticate(code, redirect_uri)
+            user = OAuthService.authenticate(user_info)
+        except OAuthError as e:
+            return error_response(message=str(e), status=401)
+
+        refresh = RefreshToken.for_user(user)
+        response = success_response(
+            data={
+                "user": UserSerializer(user).data,
+                "tokens": {"access_token": str(refresh.access_token)},
+            },
+            message="Login successful"
+        )
+        response.set_cookie(
+            key="refresh_token",
+            value=str(refresh),
+            httponly=True,
+            secure=not settings.DEBUG,
+            samesite="Lax" if settings.DEBUG else "Strict",
+            max_age=60 * 60 * 24 * 7,
+            path="/api/v1/auth/",
+        )
+        return response
 
 class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]
