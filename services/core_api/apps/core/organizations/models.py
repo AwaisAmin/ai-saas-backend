@@ -14,6 +14,22 @@ class Organization(BaseModel):
         ENTERPRISE = 'enterprise', 'Enterprise'
 
     plan = models.CharField(max_length=20, choices=PlanChoices.choices, default=PlanChoices.FREE)
+
+    class PurposeChoices(models.TextChoices):
+        PRODUCT_ENGINEERING = 'product_engineering', 'Product & Engineering'
+        AGENCY_CLIENTS      = 'agency_clients',      'Agency & Clients'
+        MARKETING_CONTENT   = 'marketing_content',   'Marketing & Content'
+        OPERATIONS_OTHER    = 'operations_other',     'Operations & Other'
+
+    class SizeChoices(models.TextChoices):
+        JUST_ME           = 'just_me',  'Just Me'
+        TWO_TEN           = '2_10',     '2-10'
+        ELEVEN_FIFTY      = '11_50',    '11-50'
+        FIFTY_TWO_HUNDRED = '51_200',   '51-200'
+        TWO_HUNDRED_PLUS  = '200_plus', '200+'
+
+    purpose = models.CharField(max_length=30, choices=PurposeChoices.choices, blank=True)
+    size    = models.CharField(max_length=20, choices=SizeChoices.choices, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -37,6 +53,18 @@ class Membership(BaseModel):
         VIEWER = 'viewer', 'Viewer'
     
     role = models.CharField(max_length=20, choices=RoleChoices.choices, default=RoleChoices.MEMBER)
+
+    class StatusChoices(models.TextChoices):
+        ACTIVE  = 'active',  'Active'
+        PENDING = 'pending', 'Pending'
+
+    status = models.CharField(
+        max_length=20,
+        choices=StatusChoices.choices,
+        default=StatusChoices.ACTIVE,
+        db_index=True,
+    )
+    
     joined_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

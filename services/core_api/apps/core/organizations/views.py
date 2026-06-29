@@ -28,17 +28,12 @@ class OrganizationListCreateView(APIView):
         if cached:
             return success_response(data=cached, message="Organizations retrieved")
 
-        orgs = OrganizationService.get_user_organizations(request.user)
-        memberships = Membership.objects.filter(
-            user=request.user,
-            organization__in=orgs,
-        ).select_related('organization')
+        memberships = OrganizationService.get_user_organizations(request.user)
 
-        data = []
-        for m in memberships:
-            org_data = OrganizationSerializer(m.organization).data
-            org_data['my_role'] = m.role
-            data.append(org_data)
+        data = [
+            {**OrganizationSerializer(m.organization).data, 'my_role': m.role}
+            for m in memberships
+        ]
 
         cache.set(cache_key, data, timeout=300)
         return success_response(data=data, message="Organizations retrieved")
@@ -54,9 +49,15 @@ class OrganizationListCreateView(APIView):
         inp = CreateOrgInput(
             name=serializer.validated_data['name'],
             logo_url=serializer.validated_data.get('logo_url', ''),
+            purpose=serializer.validated_data.get('purpose', ''),
+            size=serializer.validated_data.get('size', ''),
             owner_id=str(request.user.id),
         )
         org = OrganizationService.create(inp)
+
+        request.user.onboarding_step = request.user.OnboardingStep.ORG_CREATED
+        request.user.save(update_fields=['onboarding_step', 'updated_at'])
+
         cache.delete(f"user:{request.user.id}:orgs")
         return success_response(
             data=OrganizationSerializer(org).data,
@@ -70,7 +71,6 @@ class OrganizationDetailView(OrganizationScopedMixin, APIView):
     def get(self, request: Request, slug: str):
         cache_key = f"org:{slug}"
         org_data = cache.get(cache_key)
-
         if org_data:
             return success_response(data=org_data)
 
@@ -78,7 +78,6 @@ class OrganizationDetailView(OrganizationScopedMixin, APIView):
         self.get_membership(org)
         org_data = OrganizationSerializer(org).data
         cache.set(cache_key, org_data, timeout=300)
-
         return success_response(data=org_data)
 
     def patch(self, request: Request, slug: str):
@@ -100,20 +99,18 @@ class OrganizationDetailView(OrganizationScopedMixin, APIView):
 
         updated_org = serializer.save()
         cache.delete(f"org:{slug}")
+        cache.delete(f"user:{request.user.id}:orgs")
         return success_response(
             data=OrganizationSerializer(updated_org).data,
             message="Organization updated",
         )
-    
+
     def delete(self, request: Request, slug: str):
         org = self.get_organization()
-
         try:
-            OrganizationService.deactivate(
-                organization=org,
-                requesting_user=request.user,
-            )
+            OrganizationService.deactivate(organization=org, requesting_user=request.user)
             cache.delete(f"org:{slug}")
+            cache.delete(f"user:{request.user.id}:orgs")
             return success_response(message="Organization deleted successfully")
         except ValueError as e:
             return error_response(message=str(e), status=403)
@@ -136,10 +133,6 @@ class MemberListInviteView(OrganizationScopedMixin, APIView):
                 message="Only owner or admin can invite members",
                 status=403,
             )
-        # Plan limit check
-        can_invite, message = SubscriptionService.can_invite_member(org)
-        if not can_invite:
-            return error_response(message=message, status=403)
 
         serializer = InviteMemberSerializer(data=request.data)
         if not serializer.is_valid():
@@ -148,27 +141,32 @@ class MemberListInviteView(OrganizationScopedMixin, APIView):
                 message="Validation failed",
             )
 
+        can_invite, _ = SubscriptionService.can_invite_member(org)
+
         try:
             inp = InviteMemberInput(
                 organization_id=str(org.id),
                 email=serializer.validated_data['email'],
                 role=serializer.validated_data['role'],
             )
-            new_membership = OrganizationService.invite_member(inp)
-            log_activity.delay(
-                organization_id=str(org.id),
-                user_id=str(request.user.id),
-                action=ActivityLog.ActionChoices.MEMBER_INVITED,
-                entity_type=ActivityLog.EntityTypeChoices.MEMBERSHIP,
-                entity_id=str(new_membership.id),
-                metadata={
-                    'invited_email': serializer.validated_data['email'],
-                    'role': serializer.validated_data['role'],
-                }
-            )
+            new_membership = OrganizationService.invite_member(inp, plan_allows=can_invite)
+
+            if new_membership.status == Membership.StatusChoices.ACTIVE:
+                log_activity.delay(
+                    organization_id=str(org.id),
+                    user_id=str(request.user.id),
+                    action=ActivityLog.ActionChoices.MEMBER_INVITED,
+                    entity_type=ActivityLog.EntityTypeChoices.MEMBERSHIP,
+                    entity_id=str(new_membership.id),
+                    metadata={
+                        'invited_email': serializer.validated_data['email'],
+                        'role': serializer.validated_data['role'],
+                    }
+                )
+
             return success_response(
                 data=MemberSerializer(new_membership).data,
-                message="Member invited successfully",
+                message="Member invited successfully" if new_membership.status == Membership.StatusChoices.ACTIVE else "Invite saved as pending — upgrade to activate",
                 status=201,
             )
         except ValueError as e:

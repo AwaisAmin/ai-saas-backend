@@ -9,12 +9,12 @@ PLAN_LIMITS = {
     },
     'pro': {
         'max_projects': None,      # Unlimited
-        'max_members': 50,
+        'max_members': 15,
         'max_ai_calls_per_day': 100,
     },
     'business': {
         'max_projects': None,     # Unlimited
-        'max_members': 200,
+        'max_members': 50,
         'max_ai_calls_per_day': 500,
     },
     'enterprise': {

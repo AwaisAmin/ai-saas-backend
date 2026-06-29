@@ -27,6 +27,18 @@ class Project(BaseModel):
         default=StatusChoices.ACTIVE,
     )
 
+    class TemplateChoices(models.TextChoices):
+        PRODUCT_SPRINT     = 'product_sprint',     'Product / Sprint'
+        MARKETING_CAMPAIGN = 'marketing_campaign', 'Marketing Campaign'
+        DESIGN_AGENCY      = 'design_agency',      'Design / Agency'
+        BLANK              = 'blank',              'Blank Project'
+
+    template = models.CharField(
+        max_length=30,
+        choices=TemplateChoices.choices,
+        default=TemplateChoices.BLANK,
+    )
+
     class Meta:
         db_table = 'projects'
         ordering = ['-created_at']
@@ -38,3 +50,22 @@ class Project(BaseModel):
 
     def __str__(self):
         return f"{self.name} ({self.organization.name})"
+
+class ProjectColumn(BaseModel):
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='columns',
+    )
+    name  = models.CharField(max_length=100)
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = 'project_columns'
+        ordering = ['order']
+        indexes = [
+            models.Index(fields=['project', 'order'], name='idx_column_project_order'),
+        ]
+
+    def __str__(self):
+        return f"{self.project.name} — {self.name}"

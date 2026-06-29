@@ -6,7 +6,15 @@ from apps.core.users.models import User
 class CreateOrgInput(PydanticModel):
     name: str
     logo_url: str = ""
+    purpose: str = ""
+    size: str = ""
     owner_id: str
+
+class UpdateOrgInput(PydanticModel):
+    name: str | None = None
+    logo_url: str | None = None
+    purpose: str | None = None
+    size: str | None = None
 
 class InviteMemberInput(PydanticModel):
     organization_id: str
@@ -27,24 +35,28 @@ class OrganizationService:
             name=data.name,
             slug=slug,
             logo_url=data.logo_url,
+            purpose=data.purpose,
+            size=data.size,
         )
         Membership.objects.create(
             user_id=data.owner_id,
             organization=org,
             role=Membership.RoleChoices.OWNER,
+            status=Membership.StatusChoices.ACTIVE,
         )
         return org
 
     @staticmethod
     def get_user_organizations(user: User):
         return (
-            Organization.objects
-            .filter(memberships__user=user, is_active=True)
-            .order_by('-created_at')
+            Membership.objects
+            .filter(user=user, organization__is_active=True, status=Membership.StatusChoices.ACTIVE)
+            .select_related('organization')
+            .order_by('-organization__created_at')
         )
 
     @staticmethod
-    def invite_member(data: InviteMemberInput) -> Membership:
+    def invite_member(data: InviteMemberInput, plan_allows: bool) -> Membership:
         try:
             user = User.objects.get(email=data.email)
         except User.DoesNotExist:
@@ -53,11 +65,26 @@ class OrganizationService:
         if Membership.objects.filter(user=user, organization_id=data.organization_id).exists():
             raise ValueError("User is already a member of this organization")
 
+        status = (
+            Membership.StatusChoices.ACTIVE
+            if plan_allows
+            else Membership.StatusChoices.PENDING
+        )
+
         return Membership.objects.create(
             user=user,
             organization_id=data.organization_id,
             role=data.role,
+            status=status,
         )
+
+    @staticmethod
+    def activate_pending_members(organization: Organization) -> int:
+        updated = Membership.objects.filter(
+            organization=organization,
+            status=Membership.StatusChoices.PENDING,
+        ).update(status=Membership.StatusChoices.ACTIVE)
+        return updated
 
     @staticmethod
     def update_member_role(membership_id: str, new_role: str, organization: Organization) -> Membership:
@@ -105,4 +132,3 @@ class OrganizationService:
 
         organization.is_active = False
         organization.save(update_fields=['is_active', 'updated_at'])
-

@@ -1,7 +1,7 @@
-import uuid                       
-from django.conf import settings     
+import uuid
+from django.conf import settings
 
-from rest_framework.views import APIView                          
+from rest_framework.views import APIView
 from rest_framework.request import Request
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -16,6 +16,42 @@ from .models import User
 from .tasks import send_welcome_email, send_verification_email, send_password_reset_email
 from .oauth_providers import GoogleOAuthProvider, GitHubOAuthProvider, OAuthError
 
+def _get_onboarding_data(user: User) -> dict:
+    from apps.core.organizations.models import Membership
+    org_id = None
+    if user.onboarding_step != User.OnboardingStep.COMPLETED:
+        org_id = (
+            Membership.objects
+            .filter(user=user, role=Membership.RoleChoices.OWNER)
+            .values_list('organization_id', flat=True)
+            .first()
+        )
+    return {
+        "step": user.onboarding_step,
+        "organization_id": str(org_id) if org_id else None,
+    }
+
+def _build_auth_response(user: User, message: str):
+    refresh = RefreshToken.for_user(user)
+    response = success_response(
+        data={
+            "user": UserSerializer(user).data,
+            "tokens": {"access_token": str(refresh.access_token)},
+            "onboarding": _get_onboarding_data(user),
+        },
+        message=message,
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=str(refresh),
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="Lax" if settings.DEBUG else "Strict",
+        max_age=60 * 60 * 24 * 7,
+        path="/api/v1/auth/",
+    )
+    return response
+
 class RegisterView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [RegisterThrottle]
@@ -24,12 +60,12 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         if not serializer.is_valid():
             return error_response(errors=format_errors(serializer.errors), message="Validation failed")
-        
+
         data = RegisterInput(
             email=serializer.validated_data['email'],
             password=serializer.validated_data['password'],
-            first_name=serializer.validated_data.get('first_name',''),
-            last_name=serializer.validated_data.get('last_name',''),
+            first_name=serializer.validated_data.get('first_name', ''),
+            last_name=serializer.validated_data.get('last_name', ''),
         )
         user = AuthService.register(data)
         send_welcome_email.delay(user.email, user.first_name)
@@ -42,9 +78,9 @@ class RegisterView(APIView):
         return success_response(
             data=UserSerializer(user).data,
             message="Account created successfully. Please verify your email.",
-            status=201
+            status=201,
         )
-    
+
 class LoginView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [LoginThrottle]
@@ -53,7 +89,7 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data)
         if not serializer.is_valid():
             return error_response(errors=format_errors(serializer.errors), message="Validation failed")
-        
+
         data = LoginInput(
             email=serializer.validated_data['email'],
             password=serializer.validated_data['password'],
@@ -62,28 +98,9 @@ class LoginView(APIView):
 
         if user is None:
             return error_response(message="Invalid email or password", status=401)
-        
-        refresh = RefreshToken.for_user(user)
-        response = success_response(
-            data={
-                "user": UserSerializer(user).data,
-                "tokens": {
-                    "access_token": str(refresh.access_token),
-                }
-            },
-            message="Login successful"
-        )
-        response.set_cookie(
-            key="refresh_token",
-            value=str(refresh),
-            httponly=True,
-            secure=not settings.DEBUG,
-            samesite="Lax" if settings.DEBUG else "Strict",
-            max_age=60 * 60 * 24 * 7,
-            path="/api/v1/auth/",
-        )
-        return response
-    
+
+        return _build_auth_response(user, "Login successful")
+
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -99,12 +116,9 @@ class LogoutView(APIView):
             pass
 
         response = success_response(message="Logged out successfully")
-        response.delete_cookie(
-            key="refresh_token",
-            path="/api/v1/auth/",
-        )
+        response.delete_cookie(key="refresh_token", path="/api/v1/auth/")
         return response
-    
+
 class CustomTokenRefreshView(APIView):
     permission_classes = [AllowAny]
 
@@ -137,7 +151,7 @@ class VerifyEmailView(APIView):
 
         if user.is_verified:
             return success_response(message="Email already verified")
-        
+
         user.is_verified = True
         user.verification_token = uuid.uuid4()
         user.save(update_fields=['is_verified', 'verification_token', 'updated_at'])
@@ -168,6 +182,31 @@ class ResendVerificationView(APIView):
 
         return success_response(message=generic_message)
 
+class OnboardingView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    VALID_STEPS = [
+        User.OnboardingStep.TEAM_INVITED,
+        User.OnboardingStep.COMPLETED,
+    ]
+
+    def patch(self, request: Request):
+        step = request.data.get("step")
+
+        if step not in self.VALID_STEPS:
+            return error_response(
+                message=f"Invalid step. Valid values: {', '.join(self.VALID_STEPS)}",
+                status=400,
+            )
+
+        request.user.onboarding_step = step
+        request.user.save(update_fields=['onboarding_step', 'updated_at'])
+
+        return success_response(
+            data={"onboarding_step": step},
+            message="Onboarding step updated",
+        )
+
 class SocialAuthView(APIView):
     permission_classes = [AllowAny]
 
@@ -196,24 +235,7 @@ class SocialAuthView(APIView):
         if is_new:
             send_welcome_email.delay(user.email, user.first_name)
 
-        refresh = RefreshToken.for_user(user)
-        response = success_response(
-            data={
-                "user": UserSerializer(user).data,
-                "tokens": {"access_token": str(refresh.access_token)},
-            },
-            message="Login successful"
-        )
-        response.set_cookie(
-            key="refresh_token",
-            value=str(refresh),
-            httponly=True,
-            secure=not settings.DEBUG,
-            samesite="Lax" if settings.DEBUG else "Strict",
-            max_age=60 * 60 * 24 * 7,
-            path="/api/v1/auth/",
-        )
-        return response
+        return _build_auth_response(user, "Login successful")
 
 class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]

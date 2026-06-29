@@ -5,13 +5,13 @@ from apps.core.users.serializers import UserSerializer
 class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
-        fields = ('id', 'name', 'slug', 'logo_url', 'plan', 'is_active', 'created_at')
+        fields = ('id', 'name', 'slug', 'logo_url', 'plan', 'purpose', 'size', 'is_active', 'created_at')
         read_only_fields = ('id', 'slug', 'plan', 'is_active', 'created_at')
 
 class OrganizationCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
-        fields = ('name', 'logo_url')
+        fields = ('name', 'logo_url', 'purpose', 'size')
 
     def validate_name(self, value):
         value = value.strip()
@@ -24,8 +24,8 @@ class MemberSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Membership
-        fields = ('id', 'user', 'role', 'joined_at')
-        read_only_fields = ('id', 'user', 'joined_at')
+        fields = ('id', 'user', 'role', 'status', 'joined_at')
+        read_only_fields = ('id', 'user', 'status', 'joined_at')
 
 class InviteMemberSerializer(serializers.Serializer):
     email = serializers.EmailField()

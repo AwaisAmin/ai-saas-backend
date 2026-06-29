@@ -25,6 +25,20 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_verified = models.BooleanField(default=False)
+
+    class OnboardingStep(models.TextChoices):
+        PENDING      = 'pending',      'Pending'
+        ORG_CREATED  = 'org_created',  'Organization Created'
+        TEAM_INVITED = 'team_invited', 'Team Invited'
+        COMPLETED    = 'completed',    'Completed'
+
+    onboarding_step = models.CharField(
+        max_length=20,
+        choices=OnboardingStep.choices,
+        default=OnboardingStep.PENDING,
+        db_index=True,
+    )
+    
     verification_token = models.UUIDField(default=uuid.uuid4, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
