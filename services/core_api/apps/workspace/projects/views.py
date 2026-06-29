@@ -1,13 +1,13 @@
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
-from rest_framework.pagination import PageNumberPagination
 from common.response import success_response, error_response, format_errors
 from common.mixins import OrganizationScopedMixin
 from apps.core.organizations.models import Membership
 from apps.billing.subscriptions.services import SubscriptionService
 from apps.workspace.activity.tasks import log_activity
 from apps.workspace.activity.models import ActivityLog
+from apps.core.users.models import User
 from .models import Project
 from .serializers import ProjectSerializer, ProjectCreateSerializer, ProjectUpdateSerializer
 from .services import ProjectService, CreateProjectInput, UpdateProjectInput
@@ -32,7 +32,7 @@ class ProjectListCreateView(OrganizationScopedMixin, APIView):
                 message="Only owner or admin can create projects",
                 status=403,
             )
-        # Plan limit check
+
         can_create, message = SubscriptionService.can_create_project(org)
         if not can_create:
             return error_response(message=message, status=403)
@@ -47,17 +47,23 @@ class ProjectListCreateView(OrganizationScopedMixin, APIView):
         inp = CreateProjectInput(
             name=serializer.validated_data['name'],
             description=serializer.validated_data.get('description', ''),
+            template=serializer.validated_data.get('template', 'blank'),
             organization_id=str(org.id),
             owner_id=str(request.user.id),
         )
         project = ProjectService.create(inp)
+
+        if request.user.onboarding_step != User.OnboardingStep.COMPLETED:
+            request.user.onboarding_step = User.OnboardingStep.COMPLETED
+            request.user.save(update_fields=['onboarding_step', 'updated_at'])
+
         log_activity.delay(
             organization_id=str(org.id),
             user_id=str(request.user.id),
             action=ActivityLog.ActionChoices.PROJECT_CREATED,
             entity_type=ActivityLog.EntityTypeChoices.PROJECT,
             entity_id=str(project.id),
-            metadata={'project_name': project.name}
+            metadata={'project_name': project.name, 'template': project.template}
         )
         return success_response(
             data=ProjectSerializer(project).data,
