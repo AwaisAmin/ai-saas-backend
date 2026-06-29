@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from common.views import health_check, readiness_check
+from apps.billing.subscriptions.urls import plans_urlpatterns
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -15,6 +16,7 @@ urlpatterns = [
     path('api/v1/organizations/<slug:slug>/projects/<uuid:project_id>/tasks/', include('apps.workspace.tasks.urls')),
     path('api/v1/organizations/<slug:slug>/activity/', include('apps.workspace.activity.urls')),
     path('api/v1/organizations/<slug:slug>/subscription/', include('apps.billing.subscriptions.urls')),
+    path('api/v1/billing/plans/', include((plans_urlpatterns, 'billing'))),
     path('api/v1/ai/', include('apps.intelligence.urls')),
     path('api/v1/payments/', include('apps.billing.payments.urls')),
 ]
