@@ -1,8 +1,13 @@
-from pydantic import BaseModel as PydanticModel
 from typing import Optional
+
+from pydantic import BaseModel as PydanticModel
+
 from .models import Task
 from apps.workspace.projects.models import Project
 from apps.core.users.models import User
+
+_ALLOWED_SORT_FIELDS = {'created_at', 'due_date', 'priority', 'title'}
+
 
 class CreateTaskInput(PydanticModel):
     title: str
@@ -25,10 +30,26 @@ class UpdateTaskInput(PydanticModel):
 
 class TaskService:
     @staticmethod
-    def get_all(project: Project):
-        return Task.objects.filter(
-            project=project,
-        ).select_related('created_by', 'assignee')
+    def get_all(project: Project, filters: dict = None):
+        from .filters import TaskFilter
+
+        queryset = Task.objects.filter(project=project).select_related('created_by', 'assignee')
+
+        if not filters:
+            return queryset
+
+        queryset = TaskFilter(filters, queryset=queryset).qs
+
+        if search := filters.get('search'):
+            queryset = queryset.filter(title__icontains=search)
+
+        sort_by = filters.get('sort_by', 'created_at')
+        if sort_by not in _ALLOWED_SORT_FIELDS:
+            sort_by = 'created_at'
+        if filters.get('order', 'desc') == 'desc':
+            sort_by = f'-{sort_by}'
+
+        return queryset.order_by(sort_by)
 
     @staticmethod
     def get_by_id(task_id: str, project: Project) -> Task:

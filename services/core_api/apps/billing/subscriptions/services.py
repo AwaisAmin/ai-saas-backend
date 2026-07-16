@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from django.utils import timezone
 
 from .models import Subscription
@@ -6,6 +7,7 @@ from apps.workspace.projects.models import Project
 from apps.workspace.activity.models import ActivityLog
 from common.constants import PLAN_LIMITS
 
+_AI_CALLS_CACHE_TTL = 60  # seconds — DB hit at most once per minute per org
 
 class SubscriptionService:
     @staticmethod
@@ -60,11 +62,16 @@ class SubscriptionService:
         if limits['max_ai_calls_per_day'] is None:
             return True, ""
 
-        today_ai_calls = ActivityLog.objects.filter(
-            organization=organization,
-            action='ai_call',
-            created_at__date=timezone.now().date(),
-        ).count()
+        cache_key = f"ai_calls:{organization.id}:{timezone.now().date()}"
+        today_ai_calls = cache.get(cache_key)
+
+        if today_ai_calls is None:
+            today_ai_calls = ActivityLog.objects.filter(
+                organization=organization,
+                action=ActivityLog.ActionChoices.AI_CALL,
+                created_at__date=timezone.now().date(),
+            ).count()
+            cache.set(cache_key, today_ai_calls, timeout=_AI_CALLS_CACHE_TTL)
 
         if today_ai_calls >= limits['max_ai_calls_per_day']:
             return False, f"Daily AI limit ({limits['max_ai_calls_per_day']} calls) reached. Upgrade your plan."

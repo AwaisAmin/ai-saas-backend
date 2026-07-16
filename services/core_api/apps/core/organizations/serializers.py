@@ -1,6 +1,9 @@
 from rest_framework import serializers
-from .models import Organization, Membership
+
 from apps.core.users.serializers import UserSerializer
+from common.serializers import validate_text_field
+
+from .models import Membership, Organization
 
 class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -16,10 +19,7 @@ class OrganizationCreateSerializer(serializers.ModelSerializer):
         fields = ('name', 'logo_url', 'purpose', 'size', 'color', 'slug')
 
     def validate_name(self, value):
-        value = value.strip()
-        if len(value) < 2:
-            raise serializers.ValidationError("Name must be at least 2 characters")
-        return value
+        return validate_text_field(value, "Name")
 
 class MemberSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)

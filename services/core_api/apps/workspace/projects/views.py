@@ -1,16 +1,18 @@
-from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
-from common.response import success_response, error_response, format_errors
-from common.mixins import OrganizationScopedMixin
+from rest_framework.views import APIView
+
 from apps.billing.subscriptions.services import SubscriptionService
-from apps.workspace.activity.tasks import log_activity
-from apps.workspace.activity.models import ActivityLog
 from apps.core.users.models import User
+from apps.workspace.activity.models import ActivityLog
+from common.activity import queue_activity
+from common.mixins import OrganizationScopedMixin
+from common.response import error_response, format_errors, success_response
+
 from .models import Project
-from .serializers import ProjectSerializer, ProjectCreateSerializer, ProjectUpdateSerializer
-from .services import ProjectService, CreateProjectInput, UpdateProjectInput
-from common.constants import ADMIN_ROLES
+from .serializers import ProjectCreateSerializer, ProjectSerializer, ProjectUpdateSerializer
+from .services import CreateProjectInput, ProjectService, UpdateProjectInput
+
 
 class ProjectListCreateView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
@@ -24,12 +26,7 @@ class ProjectListCreateView(OrganizationScopedMixin, APIView):
     def post(self, request: Request, slug: str):
         org = self.get_organization()
         membership = self.get_membership(org)
-
-        if membership.role not in ADMIN_ROLES:
-            return error_response(
-                message="Only owner or admin can create projects",
-                status=403,
-            )
+        self.require_admin(membership, "Only owner or admin can create projects")
 
         can_create, message = SubscriptionService.can_create_project(org)
         if not can_create:
@@ -37,10 +34,7 @@ class ProjectListCreateView(OrganizationScopedMixin, APIView):
 
         serializer = ProjectCreateSerializer(data=request.data)
         if not serializer.is_valid():
-            return error_response(
-                errors=format_errors(serializer.errors),
-                message="Validation failed",
-            )
+            return error_response(errors=format_errors(serializer.errors), message="Validation failed")
 
         inp = CreateProjectInput(
             name=serializer.validated_data['name'],
@@ -55,19 +49,15 @@ class ProjectListCreateView(OrganizationScopedMixin, APIView):
             request.user.onboarding_step = User.OnboardingStep.COMPLETED
             request.user.save(update_fields=['onboarding_step', 'updated_at'])
 
-        log_activity.delay(
-            organization_id=str(org.id),
-            user_id=str(request.user.id),
+        queue_activity(
+            org=org, user=request.user,
             action=ActivityLog.ActionChoices.PROJECT_CREATED,
             entity_type=ActivityLog.EntityTypeChoices.PROJECT,
-            entity_id=str(project.id),
-            metadata={'project_name': project.name, 'template': project.template}
+            entity_id=project.id,
+            metadata={'project_name': project.name, 'template': project.template},
         )
-        return success_response(
-            data=ProjectSerializer(project).data,
-            message="Project created successfully",
-            status=201,
-        )
+        return success_response(data=ProjectSerializer(project).data, message="Project created successfully", status=201)
+
 
 class ProjectDetailView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
@@ -84,12 +74,7 @@ class ProjectDetailView(OrganizationScopedMixin, APIView):
     def patch(self, request: Request, slug: str, project_id: str):
         org = self.get_organization()
         membership = self.get_membership(org)
-
-        if membership.role not in ADMIN_ROLES:
-            return error_response(
-                message="Only owner or admin can update projects",
-                status=403,
-            )
+        self.require_admin(membership, "Only owner or admin can update projects")
 
         try:
             project = ProjectService.get_by_id(str(project_id), org)
@@ -98,10 +83,7 @@ class ProjectDetailView(OrganizationScopedMixin, APIView):
 
         serializer = ProjectUpdateSerializer(project, data=request.data, partial=True)
         if not serializer.is_valid():
-            return error_response(
-                errors=format_errors(serializer.errors),
-                message="Validation failed",
-            )
+            return error_response(errors=format_errors(serializer.errors), message="Validation failed")
 
         inp = UpdateProjectInput(
             name=serializer.validated_data.get('name'),
@@ -109,18 +91,14 @@ class ProjectDetailView(OrganizationScopedMixin, APIView):
             status=serializer.validated_data.get('status'),
         )
         updated = ProjectService.update(project, inp)
-        log_activity.delay(
-            organization_id=str(org.id),
-            user_id=str(request.user.id),
+        queue_activity(
+            org=org, user=request.user,
             action=ActivityLog.ActionChoices.PROJECT_UPDATED,
             entity_type=ActivityLog.EntityTypeChoices.PROJECT,
-            entity_id=str(project.id),
-            metadata={'project_name': project.name}
+            entity_id=project.id,
+            metadata={'project_name': project.name},
         )
-        return success_response(
-            data=ProjectSerializer(updated).data,
-            message="Project updated successfully",
-        )
+        return success_response(data=ProjectSerializer(updated).data, message="Project updated successfully")
 
     def delete(self, request: Request, slug: str, project_id: str):
         org = self.get_organization()
@@ -129,13 +107,12 @@ class ProjectDetailView(OrganizationScopedMixin, APIView):
         try:
             project = ProjectService.get_by_id(str(project_id), org)
             ProjectService.delete(project, request.user)
-            log_activity.delay(
-                organization_id=str(org.id),
-                user_id=str(request.user.id),
+            queue_activity(
+                org=org, user=request.user,
                 action=ActivityLog.ActionChoices.PROJECT_DELETED,
                 entity_type=ActivityLog.EntityTypeChoices.PROJECT,
-                entity_id=str(project.id),
-                metadata={'project_name': project.name}
+                entity_id=project.id,
+                metadata={'project_name': project.name},
             )
             return success_response(message="Project deleted successfully")
         except ValueError as e:

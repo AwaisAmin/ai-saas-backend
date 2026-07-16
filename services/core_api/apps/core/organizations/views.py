@@ -3,21 +3,23 @@ from django.utils.text import slugify
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.views import APIView
-from common.response import success_response, error_response, format_errors
-from common.mixins import OrganizationScopedMixin
-from apps.workspace.activity.tasks import log_activity
-from apps.workspace.activity.models import ActivityLog
+
 from apps.billing.subscriptions.services import SubscriptionService
+from apps.workspace.activity.models import ActivityLog
+from common.activity import queue_activity
+from common.mixins import OrganizationScopedMixin
+from common.response import error_response, format_errors, success_response
+
 from .models import Membership, Organization
 from .serializers import (
-    OrganizationSerializer,
-    OrganizationCreateSerializer,
-    MemberSerializer,
     InviteMemberSerializer,
+    MemberSerializer,
+    OrganizationCreateSerializer,
+    OrganizationSerializer,
     UpdateMemberRoleSerializer,
 )
-from .services import OrganizationService, CreateOrgInput, InviteMemberInput
-from common.constants import ADMIN_ROLES
+from .services import CreateOrgInput, InviteMemberInput, OrganizationService
+
 
 class OrganizationListCreateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -29,22 +31,17 @@ class OrganizationListCreateView(APIView):
             return success_response(data=cached, message="Organizations retrieved")
 
         memberships = OrganizationService.get_user_organizations(request.user)
-
         data = [
             {**OrganizationSerializer(m.organization).data, 'my_role': m.role}
             for m in memberships
         ]
-
         cache.set(cache_key, data, timeout=300)
         return success_response(data=data, message="Organizations retrieved")
 
     def post(self, request: Request):
         serializer = OrganizationCreateSerializer(data=request.data)
         if not serializer.is_valid():
-            return error_response(
-                errors=format_errors(serializer.errors),
-                message="Validation failed",
-            )
+            return error_response(errors=format_errors(serializer.errors), message="Validation failed")
 
         inp = CreateOrgInput(
             name=serializer.validated_data['name'],
@@ -61,11 +58,8 @@ class OrganizationListCreateView(APIView):
         request.user.save(update_fields=['onboarding_step', 'updated_at'])
 
         cache.delete(f"user:{request.user.id}:orgs")
-        return success_response(
-            data=OrganizationSerializer(org).data,
-            message="Organization created",
-            status=201,
-        )
+        return success_response(data=OrganizationSerializer(org).data, message="Organization created", status=201)
+
 
 class OrganizationDetailView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
@@ -85,27 +79,16 @@ class OrganizationDetailView(OrganizationScopedMixin, APIView):
     def patch(self, request: Request, slug: str):
         org = self.get_organization()
         membership = self.get_membership(org)
-
-        if membership.role not in ADMIN_ROLES:
-            return error_response(
-                message="Only owner or admin can update the organization",
-                status=403,
-            )
+        self.require_admin(membership, "Only owner or admin can update the organization")
 
         serializer = OrganizationCreateSerializer(org, data=request.data, partial=True)
         if not serializer.is_valid():
-            return error_response(
-                errors=format_errors(serializer.errors),
-                message="Validation failed",
-            )
+            return error_response(errors=format_errors(serializer.errors), message="Validation failed")
 
         updated_org = serializer.save()
         cache.delete(f"org:{slug}")
         cache.delete(f"user:{request.user.id}:orgs")
-        return success_response(
-            data=OrganizationSerializer(updated_org).data,
-            message="Organization updated",
-        )
+        return success_response(data=OrganizationSerializer(updated_org).data, message="Organization updated")
 
     def delete(self, request: Request, slug: str):
         org = self.get_organization()
@@ -129,19 +112,11 @@ class MemberListInviteView(OrganizationScopedMixin, APIView):
     def post(self, request: Request, slug: str):
         org = self.get_organization()
         membership = self.get_membership(org)
-
-        if membership.role not in ADMIN_ROLES:
-            return error_response(
-                message="Only owner or admin can invite members",
-                status=403,
-            )
+        self.require_admin(membership, "Only owner or admin can invite members")
 
         serializer = InviteMemberSerializer(data=request.data)
         if not serializer.is_valid():
-            return error_response(
-                errors=format_errors(serializer.errors),
-                message="Validation failed",
-            )
+            return error_response(errors=format_errors(serializer.errors), message="Validation failed")
 
         can_invite, _ = SubscriptionService.can_invite_member(org)
 
@@ -154,45 +129,35 @@ class MemberListInviteView(OrganizationScopedMixin, APIView):
             new_membership = OrganizationService.invite_member(inp, plan_allows=can_invite)
 
             if new_membership.status == Membership.StatusChoices.ACTIVE:
-                log_activity.delay(
-                    organization_id=str(org.id),
-                    user_id=str(request.user.id),
+                queue_activity(
+                    org=org, user=request.user,
                     action=ActivityLog.ActionChoices.MEMBER_INVITED,
                     entity_type=ActivityLog.EntityTypeChoices.MEMBERSHIP,
-                    entity_id=str(new_membership.id),
-                    metadata={
-                        'invited_email': serializer.validated_data['email'],
-                        'role': serializer.validated_data['role'],
-                    }
+                    entity_id=new_membership.id,
+                    metadata={'invited_email': serializer.validated_data['email'], 'role': serializer.validated_data['role']},
                 )
 
-            return success_response(
-                data=MemberSerializer(new_membership).data,
-                message="Member invited successfully" if new_membership.status == Membership.StatusChoices.ACTIVE else "Invite saved as pending — upgrade to activate",
-                status=201,
+            message = (
+                "Member invited successfully"
+                if new_membership.status == Membership.StatusChoices.ACTIVE
+                else "Invite saved as pending — upgrade to activate"
             )
+            return success_response(data=MemberSerializer(new_membership).data, message=message, status=201)
         except ValueError as e:
             return error_response(message=str(e))
+
 
 class MemberDetailView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request: Request, slug: str, membership_id: str):
         org = self.get_organization()
-        requesting_membership = self.get_membership(org)
-
-        if requesting_membership.role not in ADMIN_ROLES:
-            return error_response(
-                message="Only owner or admin can change roles",
-                status=403,
-            )
+        membership = self.get_membership(org)
+        self.require_admin(membership, "Only owner or admin can change roles")
 
         serializer = UpdateMemberRoleSerializer(data=request.data)
         if not serializer.is_valid():
-            return error_response(
-                errors=format_errors(serializer.errors),
-                message="Validation failed",
-            )
+            return error_response(errors=format_errors(serializer.errors), message="Validation failed")
 
         try:
             updated = OrganizationService.update_member_role(
@@ -200,30 +165,21 @@ class MemberDetailView(OrganizationScopedMixin, APIView):
                 new_role=serializer.validated_data['role'],
                 organization=org,
             )
-            log_activity.delay(
-                organization_id=str(org.id),
-                user_id=str(request.user.id),
+            queue_activity(
+                org=org, user=request.user,
                 action=ActivityLog.ActionChoices.MEMBER_ROLE_CHANGED,
                 entity_type=ActivityLog.EntityTypeChoices.MEMBERSHIP,
-                entity_id=str(membership_id),
-                metadata={'new_role': serializer.validated_data['role']}
+                entity_id=membership_id,
+                metadata={'new_role': serializer.validated_data['role']},
             )
-            return success_response(
-                data=MemberSerializer(updated).data,
-                message="Role updated successfully",
-            )
+            return success_response(data=MemberSerializer(updated).data, message="Role updated successfully")
         except ValueError as e:
             return error_response(message=str(e))
 
     def delete(self, request: Request, slug: str, membership_id: str):
         org = self.get_organization()
-        requesting_membership = self.get_membership(org)
-
-        if requesting_membership.role not in ADMIN_ROLES:
-            return error_response(
-                message="Only owner or admin can remove members",
-                status=403,
-            )
+        membership = self.get_membership(org)
+        self.require_admin(membership, "Only owner or admin can remove members")
 
         try:
             OrganizationService.remove_member(
@@ -231,17 +187,17 @@ class MemberDetailView(OrganizationScopedMixin, APIView):
                 requesting_user=request.user,
                 organization=org,
             )
-            log_activity.delay(
-                organization_id=str(org.id),
-                user_id=str(request.user.id),
+            queue_activity(
+                org=org, user=request.user,
                 action=ActivityLog.ActionChoices.MEMBER_REMOVED,
                 entity_type=ActivityLog.EntityTypeChoices.MEMBERSHIP,
-                entity_id=str(membership_id),
-                metadata={}
+                entity_id=membership_id,
+                metadata={},
             )
             return success_response(message="Member removed successfully")
         except ValueError as e:
             return error_response(message=str(e))
+
 
 class SlugCheckView(APIView):
     permission_classes = [AllowAny]

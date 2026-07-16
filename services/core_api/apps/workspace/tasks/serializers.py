@@ -1,4 +1,7 @@
 from rest_framework import serializers
+
+from common.serializers import validate_text_field
+
 from .models import Task
 from apps.core.users.serializers import UserSerializer
 
@@ -23,10 +26,7 @@ class TaskCreateSerializer(serializers.ModelSerializer):
         fields = ('title', 'description', 'priority', 'due_date', 'assignee_id')
 
     def validate_title(self, value):
-        value = value.strip()
-        if len(value) < 2:
-            raise serializers.ValidationError("Title must be at least 2 characters")
-        return value
+        return validate_text_field(value, "Title")
 
 class TaskUpdateSerializer(serializers.ModelSerializer):
     assignee_id = serializers.UUIDField(required=False, allow_null=True)
@@ -36,10 +36,7 @@ class TaskUpdateSerializer(serializers.ModelSerializer):
         fields = ('title', 'description', 'status', 'priority', 'due_date', 'assignee_id')
 
     def validate_title(self, value):
-        value = value.strip()
-        if len(value) < 2:
-            raise serializers.ValidationError("Title must be at least 2 characters")
-        return value
+        return validate_text_field(value, "Title")
 
     def validate_status(self, value):
         if value not in Task.StatusChoices.values:

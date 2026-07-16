@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from apps.core.users.serializers import UserSerializer
 from common.constants import TEMPLATE_COLUMNS
+from common.serializers import validate_text_field
 
 from .models import Project, ProjectColumn
 
@@ -28,10 +29,7 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
         fields = ('name', 'description', 'template')
 
     def validate_name(self, value):
-        value = value.strip()
-        if len(value) < 2:
-            raise serializers.ValidationError("Name must be at least 2 characters")
-        return value
+        return validate_text_field(value, "Name")
 
     def validate_template(self, value):
         if value not in TEMPLATE_COLUMNS:
@@ -44,10 +42,7 @@ class ProjectUpdateSerializer(serializers.ModelSerializer):
         fields = ('name', 'description', 'status')
 
     def validate_name(self, value):
-        value = value.strip()
-        if len(value) < 2:
-            raise serializers.ValidationError("Name must be at least 2 characters")
-        return value
+        return validate_text_field(value, "Name")
 
     def validate_status(self, value):
         if value not in Project.StatusChoices.values:

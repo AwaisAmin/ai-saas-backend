@@ -12,13 +12,11 @@ from .constants import PLANS_DATA
 from .serializers import SubscriptionSerializer
 from .services import SubscriptionService
 
-
 class PlansView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request: Request):
         return success_response(data=PLANS_DATA, message="Plans retrieved")
-
 
 class SubscriptionDetailView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]

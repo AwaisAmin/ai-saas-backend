@@ -1,18 +1,18 @@
-from rest_framework.views import APIView
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
-from rest_framework.pagination import PageNumberPagination
+from rest_framework.views import APIView
 
 from apps.core.organizations.models import Membership
 from apps.workspace.activity.models import ActivityLog
-from apps.workspace.activity.tasks import log_activity
-from apps.workspace.projects.services import ProjectService
+from common.activity import queue_activity
 from common.mixins import OrganizationScopedMixin
-from common.response import success_response, error_response, format_errors
+from common.response import error_response, format_errors, success_response
 
-from .filters import TaskFilter
-from .serializers import TaskSerializer, TaskCreateSerializer, TaskUpdateSerializer
-from .services import TaskService, CreateTaskInput, UpdateTaskInput
+from .serializers import TaskCreateSerializer, TaskSerializer, TaskUpdateSerializer
+from .services import CreateTaskInput, TaskService, UpdateTaskInput
+from apps.workspace.projects.services import ProjectService
+
 
 class TaskListCreateView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
@@ -27,31 +27,8 @@ class TaskListCreateView(OrganizationScopedMixin, APIView):
         except ValueError as e:
             return error_response(message=str(e), status=404)
 
-        tasks = TaskService.get_all(project)
+        tasks = TaskService.get_all(project, filters=request.GET.dict())
 
-        # Filtering
-        filterset = TaskFilter(request.GET, queryset=tasks)
-        tasks = filterset.qs
-
-        # Search
-        search = request.GET.get('search')
-        if search:
-            tasks = tasks.filter(title__icontains=search)
-
-        # Ordering
-        sort_by = request.GET.get('sort_by', 'created_at')
-        order = request.GET.get('order', 'desc')
-
-        allowed_sort_fields = ['created_at', 'due_date', 'priority', 'title']
-        if sort_by not in allowed_sort_fields:
-            sort_by = 'created_at'
-
-        if order == 'desc':
-            sort_by = f'-{sort_by}'
-
-        tasks = tasks.order_by(sort_by)
-
-        # Pagination
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(tasks, request)
         return paginator.get_paginated_response(TaskSerializer(page, many=True).data)
@@ -61,10 +38,7 @@ class TaskListCreateView(OrganizationScopedMixin, APIView):
         membership = self.get_membership(org)
 
         if membership.role == Membership.RoleChoices.VIEWER:
-            return error_response(
-                message="Viewers cannot create tasks",
-                status=403,
-            )
+            return error_response(message="Viewers cannot create tasks", status=403)
 
         try:
             project = ProjectService.get_by_id(str(project_id), org)
@@ -73,10 +47,7 @@ class TaskListCreateView(OrganizationScopedMixin, APIView):
 
         serializer = TaskCreateSerializer(data=request.data)
         if not serializer.is_valid():
-            return error_response(
-                errors=format_errors(serializer.errors),
-                message="Validation failed",
-            )
+            return error_response(errors=format_errors(serializer.errors), message="Validation failed")
 
         inp = CreateTaskInput(
             title=serializer.validated_data['title'],
@@ -88,23 +59,16 @@ class TaskListCreateView(OrganizationScopedMixin, APIView):
             created_by_id=str(request.user.id),
         )
         task = TaskService.create(inp)
-        log_activity.delay(
-            organization_id=str(org.id),
-            user_id=str(request.user.id),
+
+        queue_activity(
+            org=org, user=request.user,
             action=ActivityLog.ActionChoices.TASK_CREATED,
             entity_type=ActivityLog.EntityTypeChoices.TASK,
-            entity_id=str(task.id),
-            metadata={
-                'task_title': task.title,
-                'project_id': str(project.id),
-                'priority': task.priority,
-            }
+            entity_id=task.id,
+            metadata={'task_title': task.title, 'project_id': str(project.id), 'priority': task.priority},
         )
-        return success_response(
-            data=TaskSerializer(task).data,
-            message="Task created successfully",
-            status=201,
-        )
+        return success_response(data=TaskSerializer(task).data, message="Task created successfully", status=201)
+
 
 class TaskDetailView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
@@ -132,10 +96,7 @@ class TaskDetailView(OrganizationScopedMixin, APIView):
 
         serializer = TaskUpdateSerializer(task, data=request.data, partial=True)
         if not serializer.is_valid():
-            return error_response(
-                errors=format_errors(serializer.errors),
-                message="Validation failed",
-            )
+            return error_response(errors=format_errors(serializer.errors), message="Validation failed")
 
         inp = UpdateTaskInput(
             title=serializer.validated_data.get('title'),
@@ -146,10 +107,7 @@ class TaskDetailView(OrganizationScopedMixin, APIView):
             assignee_id=str(serializer.validated_data['assignee_id']) if serializer.validated_data.get('assignee_id') else None,
         )
         updated = TaskService.update(task, inp)
-        return success_response(
-            data=TaskSerializer(updated).data,
-            message="Task updated successfully",
-        )
+        return success_response(data=TaskSerializer(updated).data, message="Task updated successfully")
 
     def delete(self, request: Request, slug: str, project_id: str, task_id: str):
         org = self.get_organization()
@@ -159,13 +117,12 @@ class TaskDetailView(OrganizationScopedMixin, APIView):
             project = ProjectService.get_by_id(str(project_id), org)
             task = TaskService.get_by_id(str(task_id), project)
             TaskService.delete(task)
-            log_activity.delay(
-                organization_id=str(org.id),
-                user_id=str(request.user.id),
+            queue_activity(
+                org=org, user=request.user,
                 action=ActivityLog.ActionChoices.TASK_DELETED,
                 entity_type=ActivityLog.EntityTypeChoices.TASK,
-                entity_id=str(task.id),
-                metadata={'task_title': task.title}
+                entity_id=task.id,
+                metadata={'task_title': task.title},
             )
             return success_response(message="Task deleted successfully")
         except ValueError as e:

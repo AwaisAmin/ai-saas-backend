@@ -8,8 +8,7 @@ from rest_framework.views import APIView
 from apps.billing.subscriptions.services import SubscriptionService
 from apps.core.organizations.models import Membership, Organization
 from apps.workspace.activity.models import ActivityLog
-from apps.workspace.activity.tasks import log_activity
-from common.mixins import OrganizationScopedMixin
+from common.activity import queue_activity
 from common.response import error_response, success_response
 
 from .ai_client import generate, summarize, suggest
@@ -52,19 +51,10 @@ class GenerateView(APIView):
         if err:
             return err
 
-        max_tokens = request.data.get("max_tokens", 1024)
-        temperature = request.data.get("temperature", 0.7)
-        result = asyncio.run(generate(prompt, max_tokens, temperature))
-
-        log_activity.delay(
-            organization_id=str(org.id),
-            user_id=str(request.user.id),
-            action=ActivityLog.ActionChoices.AI_CALL,
-            entity_type=ActivityLog.EntityTypeChoices.AI,
-            metadata={"prompt": prompt[:100], "endpoint": "generate"},
-        )
+        result = asyncio.run(generate(prompt, request.data.get("max_tokens", 1024), request.data.get("temperature", 0.7)))
+        queue_activity(org=org, user=request.user, action=ActivityLog.ActionChoices.AI_CALL,
+                       entity_type=ActivityLog.EntityTypeChoices.AI, metadata={"prompt": prompt[:100], "endpoint": "generate"})
         logger.info(f"AI generate: user={request.user.id} org={org.slug}")
-
         return success_response(data=result["data"], message="Generated successfully")
 
 
@@ -82,18 +72,10 @@ class SummarizeView(APIView):
         if err:
             return err
 
-        max_tokens = request.data.get("max_tokens", 512)
-        result = asyncio.run(summarize(content, max_tokens))
-
-        log_activity.delay(
-            organization_id=str(org.id),
-            user_id=str(request.user.id),
-            action=ActivityLog.ActionChoices.AI_CALL,
-            entity_type=ActivityLog.EntityTypeChoices.AI,
-            metadata={"endpoint": "summarize"},
-        )
+        result = asyncio.run(summarize(content, request.data.get("max_tokens", 512)))
+        queue_activity(org=org, user=request.user, action=ActivityLog.ActionChoices.AI_CALL,
+                       entity_type=ActivityLog.EntityTypeChoices.AI, metadata={"endpoint": "summarize"})
         logger.info(f"AI summarize: user={request.user.id} org={org.slug}")
-
         return success_response(data=result["data"], message="Summarized successfully")
 
 
@@ -112,16 +94,8 @@ class SuggestView(APIView):
         if err:
             return err
 
-        max_tokens = request.data.get("max_tokens", 512)
-        result = asyncio.run(suggest(task_title, context, max_tokens))
-
-        log_activity.delay(
-            organization_id=str(org.id),
-            user_id=str(request.user.id),
-            action=ActivityLog.ActionChoices.AI_CALL,
-            entity_type=ActivityLog.EntityTypeChoices.AI,
-            metadata={"task_title": task_title[:100], "endpoint": "suggest"},
-        )
+        result = asyncio.run(suggest(task_title, context, request.data.get("max_tokens", 512)))
+        queue_activity(org=org, user=request.user, action=ActivityLog.ActionChoices.AI_CALL,
+                       entity_type=ActivityLog.EntityTypeChoices.AI, metadata={"task_title": task_title[:100], "endpoint": "suggest"})
         logger.info(f"AI suggest: user={request.user.id} org={org.slug}")
-
         return success_response(data=result["data"], message="Suggestions generated successfully")

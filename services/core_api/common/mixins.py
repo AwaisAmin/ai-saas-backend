@@ -1,6 +1,8 @@
 from rest_framework.exceptions import NotFound, PermissionDenied
 
 from apps.core.organizations.models import Membership, Organization
+from common.constants import ADMIN_ROLES
+
 
 class OrganizationScopedMixin:
     def get_organization(self) -> Organization:
@@ -14,9 +16,13 @@ class OrganizationScopedMixin:
         if organization is None:
             organization = self.get_organization()
         try:
-            return Membership.objects.select_related('user', 'organization').get(
+            return Membership.objects.get(
                 user=self.request.user,
                 organization=organization,
             )
         except Membership.DoesNotExist:
             raise PermissionDenied("You are not a member of this organization")
+
+    def require_admin(self, membership: Membership, message: str = "Only owner or admin can perform this action") -> None:
+        if membership.role not in ADMIN_ROLES:
+            raise PermissionDenied(message)
