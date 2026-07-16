@@ -85,6 +85,42 @@ def send_reminder_email(self, user_email: str, first_name: str,
         raise self.retry(exc=exc, countdown=60)
 
 @shared_task(bind=True, max_retries=3)
+def send_invite_email(
+    self,
+    invited_email: str,
+    org_name: str,
+    role: str,
+    invite_token: str,
+    inviter_name: str,
+):
+    try:
+        invite_url = (
+            f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}"
+            f"/invite?token={invite_token}"
+        )
+        html_content = render_to_string('emails/invite.html', {
+            'org_name': org_name,
+            'role': role,
+            'invite_url': invite_url,
+            'inviter_name': inviter_name,
+        })
+        text_content = (
+            f"You've been invited to join {org_name} as {role} by {inviter_name}."
+            f" Accept your invite: {invite_url}"
+        )
+        email = EmailMultiAlternatives(
+            subject=f"You're invited to join {org_name} on NexTask",
+            body=text_content,
+            from_email=f"NexTask <{settings.DEFAULT_FROM_EMAIL}>",
+            to=[invited_email],
+        )
+        email.attach_alternative(html_content, "text/html")
+        email.send()
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=60)
+
+
+@shared_task(bind=True, max_retries=3)
 def send_password_reset_email(self, user_email: str, first_name: str, token: str):
     try:
         reset_url = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/reset-password?token={token}"

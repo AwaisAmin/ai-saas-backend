@@ -13,7 +13,6 @@ from .models import Project
 from .serializers import ProjectCreateSerializer, ProjectSerializer, ProjectUpdateSerializer
 from .services import CreateProjectInput, ProjectService, UpdateProjectInput
 
-
 class ProjectListCreateView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
 

@@ -1,5 +1,10 @@
+import uuid
+from datetime import timedelta
+
 from django.db import models
+from django.utils import timezone
 from django.utils.text import slugify
+
 from common.models import BaseModel
 from apps.core.users.models import User
 
@@ -94,3 +99,31 @@ class Membership(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.user.email} - {self.organization.name} ({self.role})"
+
+class PendingInvite(BaseModel):
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name='pending_invites'
+    )
+    email = models.EmailField()
+    role = models.CharField(
+        max_length=20,
+        choices=Membership.RoleChoices.choices,
+        default=Membership.RoleChoices.MEMBER,
+    )
+    token = models.UUIDField(default=uuid.uuid4, unique=True)
+    invited_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name='sent_invites'
+    )
+    expires_at = models.DateTimeField()
+    is_accepted = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'pending_invites'
+        unique_together = ('organization', 'email')
+        indexes = [
+            models.Index(fields=['email'], name='idx_pending_invite_email'),
+            models.Index(fields=['token'], name='idx_pending_invite_token'),
+        ]
+
+    def __str__(self) -> str:
+        return f"Invite: {self.email} → {self.organization.name}"

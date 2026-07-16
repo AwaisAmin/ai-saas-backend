@@ -1,7 +1,11 @@
+from datetime import timedelta
+
+from django.utils import timezone
 from django.utils.text import slugify
 from pydantic import BaseModel as PydanticModel
-from .models import Organization, Membership
+
 from apps.core.users.models import User
+from .models import Membership, Organization, PendingInvite
 
 class CreateOrgInput(PydanticModel):
     name: str
@@ -22,6 +26,7 @@ class InviteMemberInput(PydanticModel):
     organization_id: str
     email: str
     role: str = "member"
+    invited_by_id: str = ""
 
 class OrganizationService:
     @staticmethod
@@ -59,27 +64,49 @@ class OrganizationService:
         )
 
     @staticmethod
-    def invite_member(data: InviteMemberInput, plan_allows: bool) -> Membership:
+    def invite_member(
+        data: InviteMemberInput,
+        plan_allows: bool,
+    ) -> tuple['Membership | None', 'PendingInvite | None']:
+        """Returns (membership, pending_invite). Exactly one will be non-None."""
         try:
             user = User.objects.get(email=data.email)
         except User.DoesNotExist:
-            raise ValueError(f"No user found with email '{data.email}'")
+            invite = OrganizationService._upsert_pending_invite(data)
+            return None, invite
 
         if Membership.objects.filter(user=user, organization_id=data.organization_id).exists():
             raise ValueError("User is already a member of this organization")
 
         status = (
-            Membership.StatusChoices.ACTIVE
-            if plan_allows
-            else Membership.StatusChoices.PENDING
+            Membership.StatusChoices.ACTIVE if plan_allows else Membership.StatusChoices.PENDING
         )
-
-        return Membership.objects.create(
+        membership = Membership.objects.create(
             user=user,
             organization_id=data.organization_id,
             role=data.role,
             status=status,
         )
+        return membership, None
+
+    @staticmethod
+    def _upsert_pending_invite(data: InviteMemberInput) -> PendingInvite:
+        expires = timezone.now() + timedelta(days=7)
+        invite, created = PendingInvite.objects.get_or_create(
+            organization_id=data.organization_id,
+            email=data.email,
+            defaults={
+                'role': data.role,
+                'invited_by_id': data.invited_by_id or None,
+                'expires_at': expires,
+            },
+        )
+        if not created:
+            invite.role = data.role
+            invite.expires_at = expires
+            invite.is_accepted = False
+            invite.save(update_fields=['role', 'expires_at', 'is_accepted', 'updated_at'])
+        return invite
 
     @staticmethod
     def activate_pending_members(organization: Organization) -> int:
