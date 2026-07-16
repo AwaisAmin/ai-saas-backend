@@ -8,6 +8,7 @@ class CreateOrgInput(PydanticModel):
     logo_url: str = ""
     purpose: str = ""
     size: str = ""
+    slug: str = ""
     owner_id: str
 
 class UpdateOrgInput(PydanticModel):
@@ -24,7 +25,7 @@ class InviteMemberInput(PydanticModel):
 class OrganizationService:
     @staticmethod
     def create(data: CreateOrgInput) -> Organization:
-        base_slug = slugify(data.name)
+        base_slug = slugify(data.slug) if data.slug else slugify(data.name)
         slug = base_slug
         counter = 1
         while Organization.objects.filter(slug=slug).exists():

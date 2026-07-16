@@ -1,5 +1,5 @@
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.request import Request
 from django.core.cache import cache
 from common.response import success_response, error_response, format_errors
@@ -51,6 +51,7 @@ class OrganizationListCreateView(APIView):
             logo_url=serializer.validated_data.get('logo_url', ''),
             purpose=serializer.validated_data.get('purpose', ''),
             size=serializer.validated_data.get('size', ''),
+            slug=serializer.validated_data.get('slug', ''),
             owner_id=str(request.user.id),
         )
         org = OrganizationService.create(inp)
@@ -240,3 +241,14 @@ class MemberDetailView(OrganizationScopedMixin, APIView):
             return success_response(message="Member removed successfully")
         except ValueError as e:
             return error_response(message=str(e))
+
+class SlugCheckView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request: Request):
+        from django.utils.text import slugify
+        slug = slugify(request.GET.get('slug', '').strip())
+        if not slug:
+            return error_response(message="slug is required", status=400)
+        available = not Organization.objects.filter(slug=slug).exists()
+        return success_response(data={"available": available, "slug": slug})

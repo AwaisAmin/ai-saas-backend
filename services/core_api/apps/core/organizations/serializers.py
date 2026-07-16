@@ -9,9 +9,11 @@ class OrganizationSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'slug', 'plan', 'is_active', 'created_at')
 
 class OrganizationCreateSerializer(serializers.ModelSerializer):
+    slug = serializers.SlugField(required=False, allow_blank=True)
+
     class Meta:
         model = Organization
-        fields = ('name', 'logo_url', 'purpose', 'size')
+        fields = ('name', 'logo_url', 'purpose', 'size', 'slug')
 
     def validate_name(self, value):
         value = value.strip()
