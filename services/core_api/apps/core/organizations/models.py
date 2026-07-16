@@ -11,6 +11,7 @@ class Organization(BaseModel):
     class PlanChoices(models.TextChoices):
         FREE = 'free', 'Free'
         PRO = 'pro', 'Pro'
+        BUSINESS   = 'business', 'Business'
         ENTERPRISE = 'enterprise', 'Enterprise'
 
     plan = models.CharField(max_length=20, choices=PlanChoices.choices, default=PlanChoices.FREE)
@@ -29,6 +30,21 @@ class Organization(BaseModel):
         TWO_HUNDRED_PLUS  = '200_plus', '200+'
 
     purpose = models.CharField(max_length=30, choices=PurposeChoices.choices, blank=True)
+
+    class ColorChoices(models.TextChoices):
+        PURPLE = 'purple', 'Purple'
+        RED    = 'red',    'Red'
+        GREEN  = 'green',  'Green'
+        YELLOW = 'yellow', 'Yellow'
+        BLUE   = 'blue',   'Blue'
+        PINK   = 'pink',   'Pink'
+
+    color = models.CharField(
+        max_length=20,
+        choices=ColorChoices.choices,
+        default=ColorChoices.PURPLE,
+    )
+
     size    = models.CharField(max_length=20, choices=SizeChoices.choices, blank=True)
     is_active = models.BooleanField(default=True)
 

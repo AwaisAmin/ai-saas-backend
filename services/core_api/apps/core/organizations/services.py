@@ -8,6 +8,7 @@ class CreateOrgInput(PydanticModel):
     logo_url: str = ""
     purpose: str = ""
     size: str = ""
+    color: str = ""
     slug: str = ""
     owner_id: str
 
@@ -38,6 +39,7 @@ class OrganizationService:
             logo_url=data.logo_url,
             purpose=data.purpose,
             size=data.size,
+            color=data.color or Organization.ColorChoices.PURPLE,
         )
         Membership.objects.create(
             user_id=data.owner_id,

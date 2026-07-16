@@ -1,7 +1,8 @@
-from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.request import Request
 from django.core.cache import cache
+from django.utils.text import slugify
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.request import Request
+from rest_framework.views import APIView
 from common.response import success_response, error_response, format_errors
 from common.mixins import OrganizationScopedMixin
 from apps.workspace.activity.tasks import log_activity
@@ -16,8 +17,7 @@ from .serializers import (
     UpdateMemberRoleSerializer,
 )
 from .services import OrganizationService, CreateOrgInput, InviteMemberInput
-
-ADMIN_ROLES = [Membership.RoleChoices.OWNER, Membership.RoleChoices.ADMIN]
+from common.constants import ADMIN_ROLES
 
 class OrganizationListCreateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -51,6 +51,7 @@ class OrganizationListCreateView(APIView):
             logo_url=serializer.validated_data.get('logo_url', ''),
             purpose=serializer.validated_data.get('purpose', ''),
             size=serializer.validated_data.get('size', ''),
+            color=serializer.validated_data.get('color', ''),
             slug=serializer.validated_data.get('slug', ''),
             owner_id=str(request.user.id),
         )
@@ -246,7 +247,6 @@ class SlugCheckView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request: Request):
-        from django.utils.text import slugify
         slug = slugify(request.GET.get('slug', '').strip())
         if not slug:
             return error_response(message="slug is required", status=400)

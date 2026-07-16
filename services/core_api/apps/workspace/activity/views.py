@@ -1,20 +1,13 @@
-from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
-from rest_framework import serializers
-from common.response import success_response
+from rest_framework.views import APIView
+
 from common.mixins import OrganizationScopedMixin
+from common.response import success_response
+
 from .models import ActivityLog
+from .serializers import ActivityLogSerializer
 
-class ActivityLogSerializer(serializers.ModelSerializer):
-    user_email = serializers.SerializerMethodField()
-
-    class Meta:
-        model = ActivityLog
-        fields = ('id', 'action', 'entity_type', 'entity_id', 'metadata', 'user_email', 'created_at')
-
-    def get_user_email(self, obj):
-        return obj.user.email if obj.user else None
 
 class ActivityLogListView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]

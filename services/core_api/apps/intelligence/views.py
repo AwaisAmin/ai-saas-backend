@@ -1,32 +1,41 @@
+import asyncio
 import logging
-logger = logging.getLogger(__name__)
-from rest_framework.views import APIView
+
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
-from common.response import success_response, error_response
-from apps.core.organizations.models import Organization, Membership
-from apps.billing.subscriptions.services import SubscriptionService
-from apps.workspace.activity.models import ActivityLog
-from .ai_client import generate, summarize, suggest
-import asyncio
+from rest_framework.views import APIView
 
-def get_org_and_check_access(request, org_slug):
+from apps.billing.subscriptions.services import SubscriptionService
+from apps.core.organizations.models import Membership, Organization
+from apps.workspace.activity.models import ActivityLog
+from apps.workspace.activity.tasks import log_activity
+from common.mixins import OrganizationScopedMixin
+from common.response import error_response, success_response
+
+from .ai_client import generate, summarize, suggest
+
+logger = logging.getLogger(__name__)
+
+
+def _get_org_and_check_access(request, org_slug):
     try:
         org = Organization.objects.get(slug=org_slug, is_active=True)
     except Organization.DoesNotExist:
-        return None, None, error_response("Organization not found", status=404)
+        return None, error_response(message="Organization not found", status=404)
 
     is_member = Membership.objects.filter(
-        organization=org, user=request.user
+        organization=org,
+        user=request.user,
+        status=Membership.StatusChoices.ACTIVE,
     ).exists()
     if not is_member:
-        return None, None, error_response("Access denied", status=403)
+        return None, error_response(message="Access denied", status=403)
 
     allowed, message = SubscriptionService.can_use_ai(org)
     if not allowed:
-        return None, None, error_response(message, status=403)
+        return None, error_response(message=message, status=403)
 
-    return org, None, None
+    return org, None
 
 
 class GenerateView(APIView):
@@ -37,9 +46,9 @@ class GenerateView(APIView):
         prompt = request.data.get("prompt")
 
         if not org_slug or not prompt:
-            return error_response("org_slug and prompt are required", status=400)
+            return error_response(message="org_slug and prompt are required", status=400)
 
-        org, _, err = get_org_and_check_access(request, org_slug)
+        org, err = _get_org_and_check_access(request, org_slug)
         if err:
             return err
 
@@ -47,17 +56,17 @@ class GenerateView(APIView):
         temperature = request.data.get("temperature", 0.7)
         result = asyncio.run(generate(prompt, max_tokens, temperature))
 
-        ActivityLog.objects.create(
-            organization=org,
-            user=request.user,
+        log_activity.delay(
+            organization_id=str(org.id),
+            user_id=str(request.user.id),
             action=ActivityLog.ActionChoices.AI_CALL,
             entity_type=ActivityLog.EntityTypeChoices.AI,
             metadata={"prompt": prompt[:100], "endpoint": "generate"},
         )
+        logger.info(f"AI generate: user={request.user.id} org={org.slug}")
 
-        logger.info(f"AI generate called by user={request.user.id} org={org.slug}")
+        return success_response(data=result["data"], message="Generated successfully")
 
-        return success_response(result["data"], message="Generated successfully")
 
 class SummarizeView(APIView):
     permission_classes = [IsAuthenticated]
@@ -67,26 +76,26 @@ class SummarizeView(APIView):
         content = request.data.get("content")
 
         if not org_slug or not content:
-            return error_response("org_slug and content are required", status=400)
+            return error_response(message="org_slug and content are required", status=400)
 
-        org, _, err = get_org_and_check_access(request, org_slug)
+        org, err = _get_org_and_check_access(request, org_slug)
         if err:
             return err
 
         max_tokens = request.data.get("max_tokens", 512)
         result = asyncio.run(summarize(content, max_tokens))
 
-        ActivityLog.objects.create(
-            organization=org,
-            user=request.user,
+        log_activity.delay(
+            organization_id=str(org.id),
+            user_id=str(request.user.id),
             action=ActivityLog.ActionChoices.AI_CALL,
             entity_type=ActivityLog.EntityTypeChoices.AI,
             metadata={"endpoint": "summarize"},
         )
+        logger.info(f"AI summarize: user={request.user.id} org={org.slug}")
 
-        logger.info(f"AI summarize called by user={request.user.id} org={org.slug}")
+        return success_response(data=result["data"], message="Summarized successfully")
 
-        return success_response(result["data"], message="Summarized successfully")
 
 class SuggestView(APIView):
     permission_classes = [IsAuthenticated]
@@ -97,23 +106,22 @@ class SuggestView(APIView):
         context = request.data.get("context")
 
         if not org_slug or not task_title or not context:
-            return error_response("org_slug, task_title and context are required", status=400)
+            return error_response(message="org_slug, task_title and context are required", status=400)
 
-        org, _, err = get_org_and_check_access(request, org_slug)
+        org, err = _get_org_and_check_access(request, org_slug)
         if err:
             return err
 
         max_tokens = request.data.get("max_tokens", 512)
         result = asyncio.run(suggest(task_title, context, max_tokens))
 
-        ActivityLog.objects.create(
-            organization=org,
-            user=request.user,
+        log_activity.delay(
+            organization_id=str(org.id),
+            user_id=str(request.user.id),
             action=ActivityLog.ActionChoices.AI_CALL,
             entity_type=ActivityLog.EntityTypeChoices.AI,
             metadata={"task_title": task_title[:100], "endpoint": "suggest"},
         )
+        logger.info(f"AI suggest: user={request.user.id} org={org.slug}")
 
-        logger.info(f"AI suggest called by user={request.user.id} org={org.slug}")
-
-        return success_response(result["data"], message="Suggestions generated successfully")
+        return success_response(data=result["data"], message="Suggestions generated successfully")

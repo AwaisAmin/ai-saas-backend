@@ -104,8 +104,8 @@ class PasswordResetService:
             return False, "Token expired or already used"
 
         token_obj.user.set_password(data.new_password)
-        token_obj.user.save()
+        token_obj.user.save(update_fields=['password', 'updated_at'])
         token_obj.is_used = True
-        token_obj.save()
+        token_obj.save(update_fields=['is_used'])
 
         return True, "Password reset successful"

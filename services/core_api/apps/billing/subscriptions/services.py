@@ -1,28 +1,11 @@
-from .models import Subscription
-from apps.core.organizations.models import Organization
+from django.utils import timezone
 
-PLAN_LIMITS = {
-    'free': {
-        'max_projects': 3,
-        'max_members': 5,
-        'max_ai_calls_per_day': 10,
-    },
-    'pro': {
-        'max_projects': None,      # Unlimited
-        'max_members': 15,
-        'max_ai_calls_per_day': 100,
-    },
-    'business': {
-        'max_projects': None,     # Unlimited
-        'max_members': 50,
-        'max_ai_calls_per_day': 500,
-    },
-    'enterprise': {
-        'max_projects': None,      # Unlimited
-        'max_members': None,       # Unlimited
-        'max_ai_calls_per_day': 2000,
-    },
-}
+from .models import Subscription
+from apps.core.organizations.models import Organization, Membership
+from apps.workspace.projects.models import Project
+from apps.workspace.activity.models import ActivityLog
+from common.constants import PLAN_LIMITS
+
 
 class SubscriptionService:
     @staticmethod
@@ -41,10 +24,9 @@ class SubscriptionService:
         if limits['max_projects'] is None:
             return True, ""
 
-        from apps.workspace.projects.models import Project
         current_count = Project.objects.filter(
             organization=organization,
-            status='active',
+            status=Project.StatusChoices.ACTIVE,
         ).count()
 
         if current_count >= limits['max_projects']:
@@ -60,9 +42,9 @@ class SubscriptionService:
         if limits['max_members'] is None:
             return True, ""
 
-        from apps.core.organizations.models import Membership
         current_count = Membership.objects.filter(
             organization=organization,
+            status=Membership.StatusChoices.ACTIVE,
         ).count()
 
         if current_count >= limits['max_members']:
@@ -77,9 +59,6 @@ class SubscriptionService:
 
         if limits['max_ai_calls_per_day'] is None:
             return True, ""
-
-        from django.utils import timezone
-        from apps.workspace.activity.models import ActivityLog
 
         today_ai_calls = ActivityLog.objects.filter(
             organization=organization,

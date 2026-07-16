@@ -1,6 +1,8 @@
 import uuid
+
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.utils import timezone
 
 class UserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -82,5 +84,4 @@ class PasswordResetToken(models.Model):
         db_table = 'password_reset_tokens'
 
     def is_valid(self):
-        from django.utils import timezone
         return not self.is_used and self.expires_at > timezone.now()

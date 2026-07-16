@@ -1,4 +1,6 @@
 import logging
+import os
+
 from .providers.base import get_payment_provider, WebhookEvent
 from apps.billing.subscriptions.models import Subscription
 from apps.core.organizations.models import Organization
@@ -10,8 +12,9 @@ class PaymentService:
     def create_checkout_session(org: Organization, plan: str, interval: str) -> str:
         provider = get_payment_provider()
 
-        success_url = f"{__import__('os').getenv('FRONTEND_URL', 'http://localhost:3000')}/billing/success"
-        cancel_url = f"{__import__('os').getenv('FRONTEND_URL', 'http://localhost:3000')}/billing/cancel"
+        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+        success_url = f"{frontend_url}/billing/success"
+        cancel_url = f"{frontend_url}/billing/cancel"
 
         session = provider.create_checkout_session(
             org_slug=org.slug,

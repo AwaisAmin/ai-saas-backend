@@ -5,7 +5,7 @@ from apps.core.users.serializers import UserSerializer
 class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
-        fields = ('id', 'name', 'slug', 'logo_url', 'plan', 'purpose', 'size', 'is_active', 'created_at')
+        fields = ('id', 'name', 'slug', 'logo_url', 'plan', 'purpose', 'size', 'color', 'is_active', 'created_at')
         read_only_fields = ('id', 'slug', 'plan', 'is_active', 'created_at')
 
 class OrganizationCreateSerializer(serializers.ModelSerializer):
@@ -13,7 +13,7 @@ class OrganizationCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Organization
-        fields = ('name', 'logo_url', 'purpose', 'size', 'slug')
+        fields = ('name', 'logo_url', 'purpose', 'size', 'color', 'slug')
 
     def validate_name(self, value):
         value = value.strip()

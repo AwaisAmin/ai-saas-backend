@@ -3,7 +3,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from common.response import success_response, error_response, format_errors
 from common.mixins import OrganizationScopedMixin
-from apps.core.organizations.models import Membership
 from apps.billing.subscriptions.services import SubscriptionService
 from apps.workspace.activity.tasks import log_activity
 from apps.workspace.activity.models import ActivityLog
@@ -11,8 +10,7 @@ from apps.core.users.models import User
 from .models import Project
 from .serializers import ProjectSerializer, ProjectCreateSerializer, ProjectUpdateSerializer
 from .services import ProjectService, CreateProjectInput, UpdateProjectInput
-
-ADMIN_ROLES = [Membership.RoleChoices.OWNER, Membership.RoleChoices.ADMIN]
+from common.constants import ADMIN_ROLES
 
 class ProjectListCreateView(OrganizationScopedMixin, APIView):
     permission_classes = [IsAuthenticated]

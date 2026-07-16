@@ -2,13 +2,7 @@ from pydantic import BaseModel as PydanticModel
 from .models import Project, ProjectColumn
 from apps.core.organizations.models import Organization
 from apps.core.users.models import User
-
-TEMPLATE_COLUMNS = {
-    'product_sprint':     ['Backlog', 'Todo', 'In Progress', 'In Review', 'Done'],
-    'marketing_campaign': ['Ideas', 'Brief', 'In Progress', 'Review', 'Published'],
-    'design_agency':      ['Research', 'Design', 'Review', 'Client Review', 'Delivered'],
-    'blank':              ['To Do', 'In Progress', 'Done'],
-}
+from common.constants import TEMPLATE_COLUMNS
 
 class CreateProjectInput(PydanticModel):
     name: str
@@ -79,11 +73,12 @@ class ProjectService:
     @staticmethod
     def delete(project: Project, requesting_user: User) -> None:
         from apps.core.organizations.models import Membership
+        from common.constants import ADMIN_ROLES
         membership = Membership.objects.get(
             user=requesting_user,
             organization=project.organization,
         )
-        if membership.role not in ['owner', 'admin']:
+        if membership.role not in ADMIN_ROLES:
             raise ValueError("Only owner or admin can delete a project")
 
         project.delete()

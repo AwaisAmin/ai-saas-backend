@@ -1,6 +1,9 @@
 from rest_framework import serializers
-from .models import Project, ProjectColumn
+
 from apps.core.users.serializers import UserSerializer
+from common.constants import TEMPLATE_COLUMNS
+
+from .models import Project, ProjectColumn
 
 class ProjectColumnSerializer(serializers.ModelSerializer):
     class Meta:
@@ -31,7 +34,6 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
         return value
 
     def validate_template(self, value):
-        from .services import TEMPLATE_COLUMNS
         if value not in TEMPLATE_COLUMNS:
             raise serializers.ValidationError(f"Invalid template. Valid options: {', '.join(TEMPLATE_COLUMNS.keys())}")
         return value
