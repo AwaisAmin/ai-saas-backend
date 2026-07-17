@@ -10,26 +10,30 @@ from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from common.response import success_response, error_response, format_errors
 from common.throttling import LoginThrottle, RegisterThrottle, ResendVerificationThrottle
 
-from .serializers import RegisterSerializer, LoginSerializer, UserSerializer
+from .serializers import RegisterSerializer, LoginSerializer, UserSerializer, ProfileUpdateSerializer, ChangePasswordSerializer
 from .services import AuthService, LoginInput, RegisterInput, PasswordResetService, PasswordResetInput, PasswordResetConfirmInput, OAuthService
 from .models import User
 from .tasks import send_welcome_email, send_verification_email, send_password_reset_email
 from .oauth_providers import GoogleOAuthProvider, GitHubOAuthProvider, OAuthError
 
-def _get_onboarding_data(user: User) -> dict:
+def _get_user_organizations(user: User) -> list:
     from apps.core.organizations.models import Membership
-    org_id = None
-    if user.onboarding_step != User.OnboardingStep.COMPLETED:
-        org_id = (
-            Membership.objects
-            .filter(user=user, role=Membership.RoleChoices.OWNER)
-            .values_list('organization_id', flat=True)
-            .first()
-        )
-    return {
-        "step": user.onboarding_step,
-        "organization_id": str(org_id) if org_id else None,
-    }
+    rows = (
+        Membership.objects
+        .filter(user=user, status=Membership.StatusChoices.ACTIVE)
+        .select_related('organization')
+        .order_by('joined_at')
+    )
+    return [
+        {
+            "id": str(m.organization.id),
+            "slug": m.organization.slug,
+            "name": m.organization.name,
+            "color": m.organization.color,
+            "role": m.role,
+        }
+        for m in rows
+    ]
 
 def _build_auth_response(user: User, message: str):
     refresh = RefreshToken.for_user(user)
@@ -37,7 +41,7 @@ def _build_auth_response(user: User, message: str):
         data={
             "user": UserSerializer(user).data,
             "tokens": {"access_token": str(refresh.access_token)},
-            "onboarding": _get_onboarding_data(user),
+            "organizations": _get_user_organizations(user),
         },
         message=message,
     )
@@ -270,3 +274,34 @@ class PasswordResetConfirmView(APIView):
             return error_response(message=message, status=400)
 
         return success_response(message=message)
+
+
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request):
+        return success_response(data=UserSerializer(request.user).data)
+
+    def patch(self, request: Request):
+        serializer = ProfileUpdateSerializer(request.user, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return error_response(errors=format_errors(serializer.errors), message="Validation failed")
+
+        serializer.save(update_fields=[*serializer.validated_data.keys(), 'updated_at'])
+        return success_response(data=UserSerializer(request.user).data, message="Profile updated")
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request: Request):
+        serializer = ChangePasswordSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response(errors=format_errors(serializer.errors), message="Validation failed")
+
+        if not request.user.check_password(serializer.validated_data['current_password']):
+            return error_response(message="Current password is incorrect", status=400)
+
+        request.user.set_password(serializer.validated_data['new_password'])
+        request.user.save(update_fields=['password', 'updated_at'])
+        return success_response(message="Password changed successfully")

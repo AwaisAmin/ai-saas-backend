@@ -10,6 +10,8 @@ from .views import (
     SocialAuthView,
     PasswordResetRequestView,
     PasswordResetConfirmView,
+    ProfileView,
+    ChangePasswordView,
 )
 
 urlpatterns = [
@@ -23,4 +25,6 @@ urlpatterns = [
     path('social/<str:provider>/', SocialAuthView.as_view(), name='social-auth'),
     path('password-reset/', PasswordResetRequestView.as_view(), name='password-reset'),
     path('password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
+    path('profile/', ProfileView.as_view(), name='profile'),
+    path('profile/change-password/', ChangePasswordView.as_view(), name='change-password'),
 ]

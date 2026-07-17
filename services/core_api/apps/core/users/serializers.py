@@ -21,3 +21,20 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ('id', 'email', 'first_name', 'last_name', 'is_verified', 'onboarding_step', 'created_at')
         read_only_fields = ('id', 'email', 'is_verified', 'onboarding_step', 'created_at')
+
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ('first_name', 'last_name')
+
+    def validate_first_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("First name cannot be empty")
+        return value
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, validators=[validate_password])
