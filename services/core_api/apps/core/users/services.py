@@ -31,31 +31,6 @@ class AuthService:
             first_name=data.first_name,
             last_name=data.last_name,
         )
-
-        # Activate any pending organization invites for this email address
-        from apps.core.organizations.models import Membership, PendingInvite
-        pending = list(
-            PendingInvite.objects.filter(
-                email=data.email,
-                is_accepted=False,
-                expires_at__gt=timezone.now(),
-            ).select_related('organization')
-        )
-        if pending:
-            Membership.objects.bulk_create(
-                [
-                    Membership(
-                        user=user,
-                        organization=inv.organization,
-                        role=inv.role,
-                        status=Membership.StatusChoices.ACTIVE,
-                    )
-                    for inv in pending
-                ],
-                ignore_conflicts=True,
-            )
-            PendingInvite.objects.filter(id__in=[inv.id for inv in pending]).update(is_accepted=True)
-
         return user
     
     @staticmethod

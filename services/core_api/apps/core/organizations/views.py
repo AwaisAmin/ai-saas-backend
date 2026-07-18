@@ -130,25 +130,7 @@ class MemberListInviteView(OrganizationScopedMixin, APIView):
                 role=serializer.validated_data['role'],
                 invited_by_id=str(request.user.id),
             )
-            new_membership, pending_invite = OrganizationService.invite_member(inp, plan_allows=can_invite)
-
-            if new_membership:
-                if new_membership.status == Membership.StatusChoices.ACTIVE:
-                    queue_activity(
-                        org=org, user=request.user,
-                        action=ActivityLog.ActionChoices.MEMBER_INVITED,
-                        entity_type=ActivityLog.EntityTypeChoices.MEMBERSHIP,
-                        entity_id=new_membership.id,
-                        metadata={'invited_email': inp.email, 'role': inp.role},
-                    )
-                message = (
-                    "Member invited successfully"
-                    if new_membership.status == Membership.StatusChoices.ACTIVE
-                    else "Invite saved as pending — upgrade to activate"
-                )
-                return success_response(data=MemberSerializer(new_membership).data, message=message, status=201)
-
-            # Non-registered user — PendingInvite created, send email
+            pending_invite = OrganizationService.invite_member(inp, plan_allows=can_invite)
             send_invite_email.delay(
                 invited_email=inp.email,
                 org_name=org.name,
@@ -158,7 +140,7 @@ class MemberListInviteView(OrganizationScopedMixin, APIView):
             )
             return success_response(
                 data=PendingInviteSerializer(pending_invite).data,
-                message="Invite email sent to unregistered user",
+                message="Invite sent",
                 status=201,
             )
         except ValueError as e:
@@ -229,8 +211,8 @@ class BulkInviteView(OrganizationScopedMixin, APIView):
 
         can_invite, _ = SubscriptionService.can_invite_member(org)
         invites_data = serializer.validated_data['invites']
-        invited_count = 0
-        pending_count = 0
+        inviter_name = request.user.get_full_name() or request.user.email
+        sent_count = 0
         skipped_count = 0
 
         for item in invites_data:
@@ -241,26 +223,15 @@ class BulkInviteView(OrganizationScopedMixin, APIView):
                 invited_by_id=str(request.user.id),
             )
             try:
-                new_membership, pending_invite = OrganizationService.invite_member(inp, plan_allows=can_invite)
-                if new_membership:
-                    invited_count += 1
-                    if new_membership.status == Membership.StatusChoices.ACTIVE:
-                        queue_activity(
-                            org=org, user=request.user,
-                            action=ActivityLog.ActionChoices.MEMBER_INVITED,
-                            entity_type=ActivityLog.EntityTypeChoices.MEMBERSHIP,
-                            entity_id=new_membership.id,
-                            metadata={'invited_email': item['email'], 'role': item['role']},
-                        )
-                elif pending_invite:
-                    pending_count += 1
-                    send_invite_email.delay(
-                        invited_email=item['email'],
-                        org_name=org.name,
-                        role=item['role'],
-                        invite_token=str(pending_invite.token),
-                        inviter_name=request.user.get_full_name() or request.user.email,
-                    )
+                pending_invite = OrganizationService.invite_member(inp, plan_allows=can_invite)
+                send_invite_email.delay(
+                    invited_email=item['email'],
+                    org_name=org.name,
+                    role=item['role'],
+                    invite_token=str(pending_invite.token),
+                    inviter_name=inviter_name,
+                )
+                sent_count += 1
             except ValueError:
                 skipped_count += 1
 
@@ -269,13 +240,12 @@ class BulkInviteView(OrganizationScopedMixin, APIView):
             request.user.save(update_fields=['onboarding_step', 'updated_at'])
 
         return success_response(
-            data={'invited': invited_count, 'pending': pending_count, 'skipped': skipped_count},
+            data={'sent': sent_count, 'skipped': skipped_count},
             message=f"Processed {len(invites_data)} invite(s)",
         )
 
 class InvitePreviewView(APIView):
-    """AllowAny — lets the signup page show org context before the user registers."""
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request: Request):
         token = request.GET.get('token', '').strip()
@@ -301,6 +271,26 @@ class InvitePreviewView(APIView):
         })
 
 
+class InviteRespondView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request: Request):
+        token = request.data.get('token', '').strip()
+        action = request.data.get('action', '').strip()
+
+        if not token:
+            return error_response(message="token is required", status=400)
+        if action not in ('accept', 'decline'):
+            return error_response(message="action must be 'accept' or 'decline'", status=400)
+
+        success, message, org_slug = OrganizationService.respond_to_invite(
+            token=token, action=action, user=request.user
+        )
+        if not success:
+            return error_response(message=message, status=400)
+        return success_response(message=message, data={'org_slug': org_slug})
+
+
 class SlugCheckView(APIView):
     permission_classes = [AllowAny]
 
@@ -308,5 +298,5 @@ class SlugCheckView(APIView):
         slug = slugify(request.GET.get('slug', '').strip())
         if not slug:
             return error_response(message="slug is required", status=400)
-        available = not Organization.objects.filter(slug=slug).exists()
+        available = not Organization.objects.filter(slug=slug, is_active=True).exists()
         return success_response(data={"available": available, "slug": slug})

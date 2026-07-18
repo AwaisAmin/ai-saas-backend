@@ -96,7 +96,7 @@ def send_invite_email(
     try:
         invite_url = (
             f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}"
-            f"/invite?token={invite_token}"
+            f"/organizations/invite?token={invite_token}"
         )
         html_content = render_to_string('emails/invite.html', {
             'org_name': org_name,

@@ -33,8 +33,15 @@ class OrganizationService:
     def create(data: CreateOrgInput) -> Organization:
         base_slug = slugify(data.slug) if data.slug else slugify(data.name)
         slug = base_slug
+
+        # Release slug from soft-deleted org so it can be reused
+        inactive = Organization.objects.filter(slug=slug, is_active=False).first()
+        if inactive:
+            inactive.slug = f"{slug}-deleted-{str(inactive.id)[:8]}"
+            inactive.save(update_fields=['slug', 'updated_at'])
+
         counter = 1
-        while Organization.objects.filter(slug=slug).exists():
+        while Organization.objects.filter(slug=slug, is_active=True).exists():
             slug = f"{base_slug}-{counter}"
             counter += 1
 
@@ -64,30 +71,19 @@ class OrganizationService:
         )
 
     @staticmethod
-    def invite_member(
-        data: InviteMemberInput,
-        plan_allows: bool,
-    ) -> tuple['Membership | None', 'PendingInvite | None']:
-        """Returns (membership, pending_invite). Exactly one will be non-None."""
+    def invite_member(data: InviteMemberInput, plan_allows: bool) -> PendingInvite:
+        """Always creates a PendingInvite — user must explicitly accept via respond endpoint."""
         try:
             user = User.objects.get(email=data.email)
+            if Membership.objects.filter(user=user, organization_id=data.organization_id).exists():
+                raise ValueError("User is already a member of this organization")
         except User.DoesNotExist:
-            invite = OrganizationService._upsert_pending_invite(data)
-            return None, invite
+            pass
 
-        if Membership.objects.filter(user=user, organization_id=data.organization_id).exists():
-            raise ValueError("User is already a member of this organization")
+        if not plan_allows:
+            raise ValueError("Member limit reached. Upgrade your plan to invite more members.")
 
-        status = (
-            Membership.StatusChoices.ACTIVE if plan_allows else Membership.StatusChoices.PENDING
-        )
-        membership = Membership.objects.create(
-            user=user,
-            organization_id=data.organization_id,
-            role=data.role,
-            status=status,
-        )
-        return membership, None
+        return OrganizationService._upsert_pending_invite(data)
 
     @staticmethod
     def _upsert_pending_invite(data: InviteMemberInput) -> PendingInvite:
@@ -107,6 +103,40 @@ class OrganizationService:
             invite.is_accepted = False
             invite.save(update_fields=['role', 'expires_at', 'is_accepted', 'updated_at'])
         return invite
+
+    @staticmethod
+    def respond_to_invite(token: str, action: str, user: User) -> tuple[bool, str, str | None]:
+        """Returns (success, message, org_slug). org_slug is set only on accept."""
+        try:
+            invite = PendingInvite.objects.select_related('organization').get(
+                token=token,
+                is_accepted=False,
+                expires_at__gt=timezone.now(),
+            )
+        except PendingInvite.DoesNotExist:
+            return False, "Invalid or expired invite", None
+
+        if invite.email.lower() != user.email.lower():
+            return False, "This invite was not sent to your email address", None
+
+        if action == 'decline':
+            invite.delete()
+            return True, "Invite declined", None
+
+        if Membership.objects.filter(user=user, organization=invite.organization).exists():
+            invite.is_accepted = True
+            invite.save(update_fields=['is_accepted', 'updated_at'])
+            return True, "You are already a member of this organization", invite.organization.slug
+
+        Membership.objects.create(
+            user=user,
+            organization=invite.organization,
+            role=invite.role,
+            status=Membership.StatusChoices.ACTIVE,
+        )
+        invite.is_accepted = True
+        invite.save(update_fields=['is_accepted', 'updated_at'])
+        return True, "You have joined the organization successfully", invite.organization.slug
 
     @staticmethod
     def activate_pending_members(organization: Organization) -> int:
@@ -160,5 +190,7 @@ class OrganizationService:
         if membership.role != Membership.RoleChoices.OWNER:
             raise ValueError("Only the owner can delete an organization")
 
+        short_id = str(organization.id)[:8]
+        organization.slug = f"{organization.slug}-deleted-{short_id}"
         organization.is_active = False
-        organization.save(update_fields=['is_active', 'updated_at'])
+        organization.save(update_fields=['slug', 'is_active', 'updated_at'])
