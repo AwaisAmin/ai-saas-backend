@@ -37,22 +37,33 @@ def _get_user_organizations(user: User) -> list:
 
 def _build_auth_response(user: User, message: str):
     refresh = RefreshToken.for_user(user)
+    access_token = str(refresh.access_token)
+
     response = success_response(
         data={
             "user": UserSerializer(user).data,
-            "tokens": {"access_token": str(refresh.access_token)},
             "organizations": _get_user_organizations(user),
         },
         message=message,
     )
-    response.set_cookie(
-        key="refresh_token",
-        value=str(refresh),
+    cookie_kwargs = dict(
         httponly=True,
         secure=not settings.DEBUG,
         samesite="Lax" if settings.DEBUG else "Strict",
+    )
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        max_age=60 * 60,
+        path="/",
+        **cookie_kwargs,
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=str(refresh),
         max_age=60 * 60 * 24 * 7,
         path="/api/v1/auth/",
+        **cookie_kwargs,
     )
     return response
 
@@ -110,16 +121,14 @@ class LogoutView(APIView):
 
     def post(self, request: Request):
         refresh_token = request.COOKIES.get("refresh_token")
-        if not refresh_token:
-            return error_response(message="Refresh token required")
-
-        try:
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-        except (TokenError, InvalidToken):
-            pass
+        if refresh_token:
+            try:
+                RefreshToken(refresh_token).blacklist()
+            except (TokenError, InvalidToken):
+                pass
 
         response = success_response(message="Logged out successfully")
+        response.delete_cookie(key="access_token", path="/")
         response.delete_cookie(key="refresh_token", path="/api/v1/auth/")
         return response
 
@@ -133,10 +142,17 @@ class CustomTokenRefreshView(APIView):
 
         try:
             token = RefreshToken(refresh_token)
-            return success_response(
-                data={"access_token": str(token.access_token)},
-                message="Token refreshed successfully",
+            response = success_response(message="Token refreshed successfully", data={})
+            response.set_cookie(
+                key="access_token",
+                value=str(token.access_token),
+                httponly=True,
+                secure=not settings.DEBUG,
+                samesite="Lax" if settings.DEBUG else "Strict",
+                max_age=60 * 60,
+                path="/",
             )
+            return response
         except (TokenError, InvalidToken):
             return error_response(message="Invalid or expired refresh token", status=401)
 
