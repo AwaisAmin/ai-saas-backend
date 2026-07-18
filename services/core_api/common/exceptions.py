@@ -1,4 +1,5 @@
 import logging
+from django.conf import settings
 from rest_framework.views import exception_handler
 from rest_framework.response import Response
 from rest_framework import status
@@ -40,9 +41,10 @@ def custom_exception_handler(exc, context):
         }, status=response.status_code)
 
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    message = f"[DEBUG] {type(exc).__name__}: {exc}" if settings.DEBUG else "Something went wrong"
     return Response({
         "success": False,
-        "message": "Something went wrong",
+        "message": message,
         "data": None,
         "errors": None,
     }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

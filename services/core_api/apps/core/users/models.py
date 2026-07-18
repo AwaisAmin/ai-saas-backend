@@ -45,6 +45,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def get_full_name(self) -> str:
+        full = f"{self.first_name} {self.last_name}".strip()
+        return full or self.email
+
     objects = UserManager()
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
