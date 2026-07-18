@@ -5,13 +5,12 @@ from rest_framework.exceptions import PermissionDenied
 
 class CookieJWTAuthentication(JWTAuthentication):
     """
-    Reads access token from httpOnly cookie first, falls back to Authorization header.
-    When authenticating via cookie, CSRF is enforced for extra security.
-    Postman/API clients can still use Bearer tokens (no CSRF required).
+    - Authorization header present → header auth, no CSRF (Postman/mobile)
+    - No header, access_token cookie present → cookie auth + CSRF enforced (browser)
     """
 
     def authenticate(self, request):
-        # Authorization header takes priority (Postman, mobile apps, etc.)
+        # Authorization header takes priority — no CSRF needed (Postman, mobile apps)
         header_result = super().authenticate(request)
         if header_result is not None:
             return header_result
@@ -20,7 +19,7 @@ class CookieJWTAuthentication(JWTAuthentication):
         if raw_token is None:
             return None
 
-        # Cookie-based auth — enforce CSRF
+        # Cookie-based auth (browser) — enforce CSRF
         self._enforce_csrf(request)
 
         validated_token = self.get_validated_token(raw_token)

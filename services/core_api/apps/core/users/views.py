@@ -20,7 +20,7 @@ def _get_user_organizations(user: User) -> list:
     from apps.core.organizations.models import Membership
     rows = (
         Membership.objects
-        .filter(user=user, status=Membership.StatusChoices.ACTIVE)
+        .filter(user=user, status=Membership.StatusChoices.ACTIVE, organization__is_active=True)
         .select_related('organization')
         .order_by('joined_at')
     )
