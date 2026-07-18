@@ -150,12 +150,17 @@ CACHES = {
 
 # CORS
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",    # Next.js local
-    "http://localhost:5173",    # Vite local
+    "http://localhost:3000",
+    "http://localhost:5173",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
 ]
 CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+]
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),   # 1 hour

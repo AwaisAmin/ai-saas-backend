@@ -42,6 +42,7 @@ def _build_auth_response(user: User, message: str):
     response = success_response(
         data={
             "user": UserSerializer(user).data,
+            "access_token": access_token,
             "organizations": _get_user_organizations(user),
         },
         message=message,
