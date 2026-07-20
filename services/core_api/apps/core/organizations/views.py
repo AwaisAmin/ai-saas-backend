@@ -254,13 +254,24 @@ class InvitePreviewView(APIView):
         try:
             invite = PendingInvite.objects.select_related('organization', 'invited_by').get(
                 token=token,
-                is_accepted=False,
                 expires_at__gt=timezone.now(),
             )
         except PendingInvite.DoesNotExist:
             return error_response(message="Invalid or expired invite", status=404)
 
+        if invite.is_accepted:
+            org = invite.organization
+            return success_response(
+                data={
+                    'already_accepted': True,
+                    'org_slug': org.slug if org.is_active else None,
+                    'org_name': org.name,
+                },
+                message="You have already joined this organization",
+            )
+
         return success_response(data={
+            'already_accepted': False,
             'email': invite.email,
             'role': invite.role,
             'org_name': invite.organization.name,
