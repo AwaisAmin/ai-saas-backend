@@ -244,6 +244,36 @@ class BulkInviteView(OrganizationScopedMixin, APIView):
             message=f"Processed {len(invites_data)} invite(s)",
         )
 
+class MyPendingInvitesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request):
+        invites = (
+            PendingInvite.objects
+            .filter(
+                email=request.user.email,
+                is_accepted=False,
+                expires_at__gt=timezone.now(),
+            )
+            .select_related('organization', 'invited_by')
+            .order_by('-created_at')
+        )
+        data = [
+            {
+                'token': str(i.token),
+                'org_id': str(i.organization.id),
+                'org_name': i.organization.name,
+                'org_slug': i.organization.slug,
+                'org_color': i.organization.color,
+                'role': i.role,
+                'inviter_name': i.invited_by.get_full_name() if i.invited_by else 'Someone',
+                'member_count': i.organization.memberships.filter(status=Membership.StatusChoices.ACTIVE).count(),
+                'expires_at': i.expires_at,
+            }
+            for i in invites
+        ]
+        return success_response(data=data, message="Pending invites retrieved")
+
 class InvitePreviewView(APIView):
     permission_classes = [IsAuthenticated]
 
