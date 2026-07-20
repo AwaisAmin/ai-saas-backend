@@ -17,7 +17,7 @@ def auth_client(user):
         'email': user.email,
         'password': 'TestPass123!',
     }, format='json')
-    token = response.data['data']['tokens']['access_token']
+    token = response.data['data']['access_token']
     client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
     return client
 

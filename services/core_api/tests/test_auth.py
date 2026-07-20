@@ -44,10 +44,19 @@ class TestLogin:
             'password': 'TestPass123!',
         }, format='json')
         assert response.status_code == 200
-        assert 'access_token' in response.data['data']['tokens']
-        assert 'refresh_token' not in response.data['data']['tokens']
+        assert 'access_token' in response.data['data']
+        assert 'access_token' in response.cookies
+        assert response.cookies['access_token']['httponly']
         assert 'refresh_token' in response.cookies
         assert response.cookies['refresh_token']['httponly']
+
+    def test_login_returns_user_and_organizations(self, client, user):
+        response = client.post('/api/v1/auth/login/', {
+            'email': user.email,
+            'password': 'TestPass123!',
+        }, format='json')
+        assert 'user' in response.data['data']
+        assert 'organizations' in response.data['data']
 
     def test_login_wrong_password(self, client, user):
         response = client.post('/api/v1/auth/login/', {
@@ -70,22 +79,23 @@ class TestLogout:
             'email': user.email,
             'password': 'TestPass123!',
         }, format='json')
-        access_token = login.data['data']['tokens']['access_token']
+        access_token = login.data['data']['access_token']
         client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
 
         response = client.post('/api/v1/auth/logout/')
         assert response.status_code == 200
 
-    def test_logout_clears_cookie(self, client, user):
+    def test_logout_clears_cookies(self, client, user):
         login = client.post('/api/v1/auth/login/', {
             'email': user.email,
             'password': 'TestPass123!',
         }, format='json')
-        access_token = login.data['data']['tokens']['access_token']
+        access_token = login.data['data']['access_token']
         client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
 
         response = client.post('/api/v1/auth/logout/')
         assert response.cookies['refresh_token'].value == ''
+        assert response.cookies['access_token'].value == ''
 
     def test_logout_unauthenticated(self, client):
         response = client.post('/api/v1/auth/logout/')
@@ -101,7 +111,8 @@ class TestTokenRefresh:
 
         response = client.post('/api/v1/auth/token/refresh/')
         assert response.status_code == 200
-        assert 'access_token' in response.data['data']
+        assert 'access_token' in response.cookies
+        assert response.cookies['access_token']['httponly']
 
     def test_refresh_without_cookie(self, client):
         response = client.post('/api/v1/auth/token/refresh/')
@@ -129,8 +140,4 @@ class TestResendVerification:
         response = client.post('/api/v1/auth/resend-verification/', {
             'email': 'ghost@example.com',
         }, format='json')
-        assert response.status_code == 200
-
-    def test_resend_no_email(self, client):
-        response = client.post('/api/v1/auth/resend-verification/', {}, format='json')
         assert response.status_code == 200

@@ -22,7 +22,7 @@ def auth_client(user, membership):
         'email': user.email,
         'password': 'TestPass123!',
     }, format='json')
-    token = response.data['data']['tokens']['access_token']
+    token = response.data['data']['access_token']
     client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
     return client
 
@@ -50,9 +50,10 @@ class TestSubscriptions:
     def test_get_subscription_non_member(self, org):
         other_user = UserFactory()
         client = APIClient()
-        client.post('/api/v1/auth/login/', {
+        login = client.post('/api/v1/auth/login/', {
             'email': other_user.email,
             'password': 'TestPass123!',
         }, format='json')
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {login.data["data"]["access_token"]}')
         response = client.get(f'/api/v1/organizations/{org.slug}/subscription/')
-        assert response.status_code == 401
+        assert response.status_code == 403

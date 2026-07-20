@@ -46,7 +46,7 @@ class TestGoogleOAuth:
             }, format="json")
 
         assert response.status_code == 200
-        assert response.data["data"]["tokens"]["access_token"] is not None
+        assert response.data["data"]["access_token"] is not None
         assert response.data["data"]["user"]["email"] == "googleuser@example.com"
         assert response.data["data"]["user"]["is_verified"] is True
 

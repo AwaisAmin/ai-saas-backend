@@ -1,8 +1,11 @@
+import uuid
 import factory
+from django.utils import timezone
+from datetime import timedelta
 from factory.django import DjangoModelFactory
 from faker import Faker
 from apps.core.users.models import User
-from apps.core.organizations.models import Organization, Membership
+from apps.core.organizations.models import Organization, Membership, PendingInvite
 from apps.workspace.projects.models import Project
 from apps.workspace.tasks.models import Task
 from apps.billing.subscriptions.models import Subscription
@@ -42,6 +45,18 @@ class MembershipFactory(DjangoModelFactory):
     user = factory.SubFactory(UserFactory)
     organization = factory.SubFactory(OrganizationFactory)
     role = Membership.RoleChoices.OWNER
+
+class PendingInviteFactory(DjangoModelFactory):
+    class Meta:
+        model = PendingInvite
+
+    organization = factory.SubFactory(OrganizationFactory)
+    email = factory.LazyFunction(lambda: fake.unique.email())
+    role = Membership.RoleChoices.MEMBER
+    token = factory.LazyFunction(uuid.uuid4)
+    invited_by = factory.SubFactory(UserFactory)
+    expires_at = factory.LazyFunction(lambda: timezone.now() + timedelta(days=7))
+    is_accepted = False
 
 class SubscriptionFactory(DjangoModelFactory):
     class Meta:

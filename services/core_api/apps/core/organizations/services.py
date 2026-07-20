@@ -81,7 +81,7 @@ class OrganizationService:
             pass
 
         if not plan_allows:
-            raise ValueError("Member limit reached. Upgrade your plan to invite more members.")
+            raise PermissionError("Member limit reached. Upgrade your plan to invite more members.")
 
         return OrganizationService._upsert_pending_invite(data)
 

@@ -25,7 +25,7 @@ def auth_client(user, membership):
         'email': user.email,
         'password': 'TestPass123!',
     }, format='json')
-    token = response.data['data']['tokens']['access_token']
+    token = response.data['data']['access_token']
     client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
     return client
 
@@ -77,7 +77,7 @@ class TestAI:
             'email': other_user.email,
             'password': 'TestPass123!',
         }, format='json')
-        token = response.data['data']['tokens']['access_token']
+        token = response.data['data']['access_token']
         client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
         with patch('apps.intelligence.views.generate', new=AsyncMock(return_value=MOCK_RESULT)):
             response = client.post('/api/v1/ai/generate-tasks/', {

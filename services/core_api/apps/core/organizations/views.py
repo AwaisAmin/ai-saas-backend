@@ -143,6 +143,8 @@ class MemberListInviteView(OrganizationScopedMixin, APIView):
                 message="Invite sent",
                 status=201,
             )
+        except PermissionError as e:
+            return error_response(message=str(e), status=403)
         except ValueError as e:
             return error_response(message=str(e))
 
